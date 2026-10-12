@@ -1,5 +1,7 @@
 # Coupon Pocket
 
+**Flutter port:** [Android, iOS and web source, setup and platform limitations](flutter/README.md). The Flutter app is developed alongside the existing Java client; the APK described below remains the Java build.
+
 An independent, minimal Android client for account login, viewing/activating Lidl Plus coupons, and retrieving and displaying your account loyalty card at checkout. Source is written separately from the original app; no Lidl graphics, original classes, bundled SDKs or native libraries are repackaged.
 
 **Status: installable experimental prototype.** The APK compiles and its local tests pass. The user reported successful login and an account-card QR with 0.2.1. The user subsequently reported that coupon retrieval worked with 0.2.2, but activation returned 415. Individual activation and pictures were reported working on a phone with 0.2.3. Checkout acceptance remains unverified by the developer. The account service may reject an independently signed app or require different client registration/parameters; coupon requests may require additional context not yet traced. This is not a verified replacement for Lidl Plus.
