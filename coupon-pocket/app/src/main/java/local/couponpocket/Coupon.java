@@ -20,6 +20,16 @@ public final class Coupon {
         JSONObject validity=p.optJSONObject("validity");
         expiry=validity==null?p.optString("endValidityDate",""):validity.optString("end",validity.optString("endDate",""));
     }
+    public boolean onlineShop(){
+        String channel=raw.isNull("channel")?"":raw.optString("channel").trim();
+        if(!channel.isEmpty())return "ONLINESHOP".equalsIgnoreCase(channel);
+        JSONArray channels=raw.optJSONArray("channels");
+        if(channels!=null&&channels.length()>0){
+            for(int i=0;i<channels.length();i++)if(!"ONLINESHOP".equalsIgnoreCase(channels.optString(i).trim()))return false;
+            return true;
+        }
+        return "ONLINESHOP".equalsIgnoreCase(section.trim());
+    }
     public String validUntil(Locale locale){
         if(expiry.isEmpty())return "";
         LocalDate date;

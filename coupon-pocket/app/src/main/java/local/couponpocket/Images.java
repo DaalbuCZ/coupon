@@ -50,7 +50,7 @@ public final class Images {
         try{
             c.setRequestMethod("GET");c.setInstanceFollowRedirects(false);c.setUseCaches(false);
             c.setConnectTimeout(10000);c.setReadTimeout(15000);
-            c.setRequestProperty("Accept","image/*");c.setRequestProperty("User-Agent","CouponPocket/0.2.5 (Android)");
+            c.setRequestProperty("Accept","image/*");c.setRequestProperty("User-Agent","CouponPocket/0.3.0 (Android)");
             // No bearer/client authorization, identifiers, referrer or cookie headers.
             if(c.getResponseCode()!=200)throw new IllegalArgumentException("Image unavailable.");
             String type=c.getContentType();if(type==null||!type.toLowerCase(java.util.Locale.ROOT).startsWith("image/"))throw new IllegalArgumentException("Not an image.");

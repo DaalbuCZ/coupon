@@ -21,7 +21,7 @@ public final class Transport implements RequestClient {
             c.setInstanceFollowRedirects(false);c.setRequestMethod(method);
             c.setConnectTimeout(15000);c.setReadTimeout(20000);c.setUseCaches(false);
             c.setRequestProperty("Accept","application/json");
-            c.setRequestProperty("User-Agent","CouponPocket/0.2.5 (Android)");
+            c.setRequestProperty("User-Agent","CouponPocket/0.3.0 (Android)");
             for(Map.Entry<String,String> h:headers.entrySet()) c.setRequestProperty(h.getKey(),h.getValue());
             if(body!=null){
                 byte[] data=body.getBytes(StandardCharsets.UTF_8);

@@ -7,4 +7,5 @@
 !/analysis/*.py
 /coupon-pocket/dist/*
 !/coupon-pocket/dist/coupon-pocket-dev.apk
+!/coupon-pocket/dist/coupon-pocket-source.zip
 !/coupon-pocket/dist/SHA256SUMS

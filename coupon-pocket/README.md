@@ -2,7 +2,19 @@
 
 An independent, minimal Android client for account login, viewing/activating Lidl Plus coupons, and retrieving and displaying your account loyalty card at checkout. Source is written separately from the original app; no Lidl graphics, original classes, bundled SDKs or native libraries are repackaged.
 
-**Status: installable experimental prototype.** The APK compiles and its local tests pass. The user reported successful login and an account-card QR with 0.2.1. The user subsequently reported that coupon retrieval worked with 0.2.2, but activation returned 415. The user reported that activation and pictures worked with 0.2.3. Checkout acceptance remains unverified by the developer. The account service may reject an independently signed app or require different client registration/parameters; coupon requests may require additional context not yet traced. This is not a verified replacement for Lidl Plus.
+**Status: installable experimental prototype.** The APK compiles and its local tests pass. The user reported successful login and an account-card QR with 0.2.1. The user subsequently reported that coupon retrieval worked with 0.2.2, but activation returned 415. Individual activation and pictures were reported working on a phone with 0.2.3. Checkout acceptance remains unverified by the developer. The account service may reject an independently signed app or require different client registration/parameters; coupon requests may require additional context not yet traced. This is not a verified replacement for Lidl Plus.
+
+## 0.3.0 compact app and batch activation
+
+The implemented Android UI now uses neutral grey/white surfaces, a thin Coupon Pocket header, and compact two-column cards. Pictures are faded into the upper-right card background rather than taking a dedicated row. Tap a coupon title for full details. Unnecessary header/status, privacy and checkout explanatory paragraphs have been removed from the UI; the protocol/privacy details remain in this README. Screenshots remain allowed.
+
+Bottom navigation is **Coupons**, **Activated**, **Checkout**. Settings are opened from the gear button inside Checkout. Pull down at the top of either coupon tab to refresh; tapping the header is an accessible alternative. A small loading indicator replaces the persistent status banner.
+
+The floating filter toggles **ONLINESHOP** coupons and remembers the choice. It uses the explicit `channel`, online-only `channels` list, or section label when no channel is supplied; coupons explicitly usable in store remain visible. Filtering applies to both coupon tabs. A checkmark marks the hidden-online state; long-press exposes the filter label.
+
+**Activate all** is above the filter on the Coupons tab and requires confirmation. It targets the currently visible, inactive, nonprocessing coupons, respects the online filter, refreshes the server list and checks each coupon's current details. Already activated, unavailable, expired, redeemed, processing and product-choice coupons are skipped. Choices are never invented. Requests run serially and stop after the first failed/uncertain request without retrying mutations. The Stop button or leaving the activity cancels the remaining mutations after any in-flight request completes. A final read refreshes the list and a summary reports confirmed activations and skipped coupons. No offline mutation queue is added.
+
+This build compiles and passes 176 offline checks. Pull gestures, native layout and the new batch flow still require a phone UI/live-account check; no live mutations were made during development.
 
 ## 0.2.5 two-column coupons, dates and discount labels
 
@@ -44,10 +56,10 @@ Install the updated APK over the old build and start a new login. Previous autho
 
 The locally development-signed APK is `dist/coupon-pocket-dev.apk` (Android 9 or newer). Transfer it to your phone and open it to install, allowing installation from that source if Android requests it. The app has its own package name, `local.couponpocket`, and does not overwrite Lidl Plus.
 
-1. Open **Settings** and choose your country and language; defaults are CZ / cs-CZ. Store ID is optional and must be a known store identifier, not an address.
+1. Open **Checkout → Settings** and choose your country and language; defaults are CZ / cs-CZ. Store ID is optional and must be a known store identifier, not an address.
 2. Select **Log in with Lidl**. Your browser opens Lidl's account page; the app does not collect your password. If Android asks which app should receive the callback, choose Coupon Pocket **for this login**. The original app registers the same callback scheme, so a saved default can route it to the original app; adjust link defaults if needed. Only a callback matching the state of a login initiated in Coupon Pocket is accepted.
-3. Refresh coupons. The app also tries to retrieve your account loyalty card if it has not been saved. Each activation/deactivation loads current details and asks for confirmation. Coupons with product groups present one choice per group; existing server choices are preselected. **Details → Change products** changes choices on an activated coupon. After confirmation, the app checks details again, sends the mutation once, then refreshes the list. Saved or uncertain state disables mutations until a successful refresh. If a request times out, its result is unknown—refresh before retrying.
-4. In **Checkout card**, the app renders the loyalty ID returned by the authenticated profile service as an offline QR. **Retrieve account card** retries retrieval or refreshes it. It does not derive a card from your tokens or create an account. Cached cards are bound to the account login and country. Changing country clears saved cards to prevent showing the wrong region's card.
+3. Pull down at the top of **Coupons** to refresh. The app also tries to retrieve your account loyalty card if it has not been saved. Each activation/deactivation loads current details and asks for confirmation. Coupons with product groups present one choice per group; existing server choices are preselected. **Coupon title → Change products** changes choices on an activated coupon. After confirmation, the app checks details again, sends the mutation once, then refreshes the list. Saved or uncertain state disables mutations until a successful refresh. If a request times out, its result is unknown—refresh before retrying.
+4. In **Checkout**, the app renders the loyalty ID returned by the authenticated profile service as an offline QR. **Retrieve account card** retries retrieval or refreshes it. It does not derive a card from your tokens or create an account. Cached cards are bound to the account login and country. Changing country clears saved cards to prevent showing the wrong region's card.
 5. Card import remains available as a fallback: import a cropped image of your own existing loyalty card, or paste its exact QR text. An import takes display priority; remove it to show your retrieved account card. The system file picker requires no camera/photo-library permission. Image pixels are decoded and re-encoded without original metadata, then encrypted locally.
 6. Show the card at checkout. It identifies your existing account; it does not mint coupons, create eligibility, or mark a coupon redeemed. Redemption and validation belong to Lidl's checkout/server systems. The ordinary native loyalty QR format is implemented; eTicket flags, payment basket codes and the current React Native card implementation have not been reproduced or validated. Checkout acceptance needs a real-world scan. Do not import an expiring payment code.
 
@@ -97,7 +109,7 @@ The Gradle project can also be opened in Android Studio. It uses Android Gradle 
 ## Validation completed
 
 - APK compilation, ZIP alignment and Android v3 signature verification.
-- 157 checks covering the PKCE RFC vector, state/callback/replay rejection, expired state, host restrictions, header injection prevention, coupon parsing, token refresh/rotation, cache invalidation, loyalty-response validation, region binding, account switches, product selections/overrides, changed groups, validity checks, original token client authentication, safe OAuth errors, rejected-exchange replay protection, exact coupon URLs including the factory prefix, activation JSON media type/body, image fields/URL validation, local image destination rejection, locale/date parsing near midnight, server discount text/asterisks, and logout.
+- 176 checks covering the PKCE RFC vector, state/callback/replay rejection, expired state, host restrictions, header injection prevention, coupon parsing, token refresh/rotation, cache invalidation, loyalty-response validation, region binding, account switches, product selections/overrides, changed groups, validity checks, original token client authentication, safe OAuth errors, rejected-exchange replay protection, exact coupon URLs including the factory prefix, activation JSON media type/body, image fields/URL validation, local image destination rejection, locale/date parsing near midnight, server discount text/asterisks, online-channel filtering, batch confirmation scope, revalidation, skipping choices, cancellation, mutation failure/no replay, and logout.
 - Fake-server tests ensure mutations are not automatically retried after 401 or an uncertain network result; authenticated reads can retry once after refresh.
 - Manifest/source dependency checks confirm the sole declared permission and the two source packages.
 - Two independent QR round trips through OpenCV using non-account test payloads.
@@ -114,7 +126,9 @@ An Android emulator/device UI run, native Keystore behavior, browser callback ro
 - `Transport.java`: the account/coupon/profile HTTP boundary.
 - `Images.java`, `ImageUrl.java`: independent token-free image loading, limits and memory cache.
 - `Vault.java`: encrypted local files.
-- `MainActivity.java`: native UI, product selection, confirmation, account card and card import and region settings.
+- `MainActivity.java`: native UI, navigation, confirmations, floating filters/actions, account card and preferences.
+- `RefreshScroll.java`: pull-to-refresh interception while preserving ordinary scroll/taps.
+- `BulkActivator.java`: serial confirmed activation with fresh eligibility and cancellation.
 - `App.java`: a serial work queue shared across activity recreation.
 - `QrView.java`: offline QR display.
 - `tests/ClientTest.java`, `tests/verify.py`: offline protocol/API/privacy/QR checks.
