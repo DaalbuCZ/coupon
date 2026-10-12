@@ -53,7 +53,7 @@ public final class Vault implements Storage {
     }
     public synchronized void delete(String name) { new File(directory,name).delete();new File(directory,name+".tmp").delete(); }
     public synchronized void clear() throws Exception {
-        for (String n:new String[]{"session","pending","card-image","card-text","coupons","settings","loyalty","accounts","import"}) delete(n);
+        for (String n:new String[]{"session","pending","card-image","card-text","coupons","settings","loyalty","accounts","import","view","favourites"}) delete(n);
         KeyStore ks=KeyStore.getInstance("AndroidKeyStore");ks.load(null);ks.deleteEntry(ALIAS);
     }
 }

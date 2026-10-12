@@ -13,6 +13,7 @@ Future<Reply> send(
 ) async {
   allow(url);
   final h = web.Headers();
+  h.set('Accept', 'application/json');
   headers.forEach((name, value) => h.set(name, value));
   if (body != null) h.set('Content-Type', contentType!);
   final controller = web.AbortController();

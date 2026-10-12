@@ -1,9 +1,53 @@
+import 'dart:async';
+import 'dart:collection';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'image_connection.dart';
+
 final _cache = <String, Uint8List>{};
+final _inFlight = <String, Future<Uint8List?>>{};
+final _waiting = Queue<Completer<void>>();
+int _active = 0;
 int _generation = 0;
+
+/// Persist only a bounded, re-encoded thumbnail, never the source metadata.
+Future<Uint8List?> snapshotPicture(String url) async {
+  final bytes = await picture(url);
+  if (bytes == null) return null;
+  final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
+  final descriptor = await ui.ImageDescriptor.encoded(buffer);
+  try {
+    final scale = math.min(
+      1.0,
+      400 / math.max(descriptor.width, descriptor.height),
+    );
+    final codec = await descriptor.instantiateCodec(
+      targetWidth: math.max(1, (descriptor.width * scale).round()),
+      targetHeight: math.max(1, (descriptor.height * scale).round()),
+    );
+    try {
+      final frame = await codec.getNextFrame();
+      try {
+        final data = await frame.image.toByteData(
+          format: ui.ImageByteFormat.png,
+        );
+        if (data == null || data.lengthInBytes > 512 * 1024) return null;
+        return data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+      } finally {
+        frame.image.dispose();
+      }
+    } finally {
+      codec.dispose();
+    }
+  } finally {
+    descriptor.dispose();
+    buffer.dispose();
+  }
+}
+
 void clearPictures() {
   _generation++;
   _cache.clear();
@@ -32,8 +76,37 @@ bool _public(InternetAddress a) {
   return true;
 }
 
-Future<Uint8List?> picture(String url) async {
-  if (_cache.containsKey(url)) return _cache[url];
+Future<Uint8List?> picture(String url) {
+  final cached = _cache.remove(url);
+  if (cached != null) {
+    _cache[url] = cached;
+    return Future.value(cached);
+  }
+  final generation = _generation;
+  final key = '$generation:$url';
+  return _inFlight.putIfAbsent(key, () async {
+    if (_active < 3) {
+      _active++;
+    } else {
+      final ready = Completer<void>();
+      _waiting.add(ready);
+      await ready.future;
+    }
+    try {
+      if (generation != _generation) return null;
+      return await _downloadPicture(url);
+    } finally {
+      _inFlight.remove(key);
+      if (_waiting.isEmpty) {
+        _active--;
+      } else {
+        _waiting.removeFirst().complete();
+      }
+    }
+  });
+}
+
+Future<Uint8List?> _downloadPicture(String url) async {
   final generation = _generation, u = Uri.tryParse(url);
   if (u == null ||
       u.scheme != 'https' ||
@@ -53,10 +126,32 @@ Future<Uint8List?> picture(String url) async {
     if (addresses.isEmpty || addresses.any((a) => !_public(a))) {
       throw const SocketException('Local image destination blocked.');
     }
-    return Socket.startConnect(addresses.first, uri.port);
+    final task = await Socket.startConnect(addresses.first, uri.port);
+    var cancelled = false;
+    Socket? connected;
+    final secure = task.socket.then((socket) async {
+      connected = socket;
+      if (cancelled) {
+        socket.destroy();
+        throw const SocketException('Image connection cancelled.');
+      }
+      final tls = await imageTls(socket, uri.host);
+      connected = tls;
+      if (cancelled) {
+        tls.destroy();
+        throw const SocketException('Image connection cancelled.');
+      }
+      return tls;
+    });
+    return ConnectionTask.fromSocket(secure, () {
+      cancelled = true;
+      task.cancel();
+      connected?.destroy();
+    });
   };
   try {
     final request = await client.getUrl(u);
+    request.headers.set('Accept', 'image/*');
     request.followRedirects = false;
     final response = await request.close().timeout(const Duration(seconds: 15));
     if (response.statusCode != 200 ||
@@ -79,7 +174,10 @@ Future<Uint8List?> picture(String url) async {
     descriptor.dispose();
     encoded.dispose();
     if (!safe || generation != _generation) return null;
-    while (_cache.length >= 12) {
+    while (_cache.isNotEmpty &&
+        (_cache.length >= 32 ||
+            _cache.values.fold<int>(0, (n, b) => n + b.length) + bytes.length >
+                16 * 1024 * 1024)) {
       _cache.remove(_cache.keys.first);
     }
     _cache[url] = bytes;

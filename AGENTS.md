@@ -2,6 +2,36 @@
 
 ## Scope and established product choices
 
+Flutter 0.12.3: all exposed carousel cards accept direct selection, favourite and details taps. No off-centre IgnorePointer or tap-to-focus wrapper. Preserve transformed hit testing, frontmost-card paint/hit order, native scroll drag arbitration and bounded card reuse.
+
+Flutter 0.12.2: single lime selection outline, no white under-border. Lower detail artwork by the system inset plus 32 logical pixels; extend its sampled top-edge colour to the screen top. Sample once through a bounded thumbnail, dispose decode resources, preserve token-free picture loading and parallax.
+
+Flutter 0.12.1: white favourite button surface matching info, yellow saved-star icon, no favourite card glow/shadows. Offer-detail image parallax at one quarter of content movement, disabled for reduced motion and cached behind a repaint boundary. Account covers remain unchanged.
+
+Flutter 0.12.0: centered rear cards, no browse mutation text or plus button, bright green selection outline. Full-bleed covers with floating back arrow; collapse title onto back-button row and flatten sheet corners. Reconcile selection aliases for the same account/campaign and deduplicate checkout; preserve confirmed responses across a lagging immediate list read. Mark uncertain attempts only immediately before actual send, never all planned targets. Inactive checkout rows read fresh state and require explicit retry confirmation; never automatically replay failed mutations.
+
+Flutter 0.11.0: floating error/notice snackbars, no inline banners. Soft carousel top gradient; gently smaller rear cards; bounded reuse of nearby card widgets. Shared cover/sheet scrolling for offer and account details with pinned titles, one account name and adjacent rename pen. No account loading skeleton or reserved QR placeholder. Rounded product search. Top-level persistent Dark mode switch with theme-aware surfaces/text and white QR backgrounds. Keep release smoothness and live QR claims bounded by phone feedback.
+
+Flutter 0.10.0: card/body taps toggle shopping selection and activate/deactivate through the serial queue; deactivation rechecks fresh details and never replays failed DELETEs. Details is an info button below the star and has no generic activation controls; explicit product choices retain a Save product choices action. Continue is always present, disabled when empty. Strong green/white selected outline; bright yellow favourite star and a cached gold shadow. No browse category text. Bigger cards and more lower spacing; capped, damped fling without carried momentum. Bundle open-licensed Google Sans Flex with ROND 100, no runtime font downloads. Account QR loading/error panels stay compact (successful QR retains a bounded square).
+
+
+Flutter 0.9.2: omit the browse Coupons label (retain Favourites category), reduce lower-card tilt to 1.08 radians and gently tilt upper cards to -0.22 radians. Checkout ends with a distinct red Clear shopping list action; this only clears the local shopping selection. Filters use consistent section spacing and rounded panels: account radio choices, online-offer switch, then an outlined reset button.
+
+
+Flutter 0.9.1: continuous Rolodex scrolling with native fling friction, no item counter and no snapping. Paint cards in fixed ascending order so lower cards always overlay those above. Near the bottom, lower cards pivot down from their top edge and move their hinge below the flat card, revealing it fully. Map scroll pixels directly to card translation; cache nearby artwork behind repaint boundaries and animate paint transforms rather than per-frame layout/order changes.
+
+
+Flutter 0.9.0: lazy vertical Wallet-style overlapping square-card stack; remove routine Active text from browse cards. Large Continue button. Single-account checkout shows that account's QR above compact selected items; multiple accounts keep separate QR buttons. Offer details is a back-arrow page: visible discount/limits, searchable progressive product list, then expandable About and Conditions. Group account management into Card, Preferences and Connection. On Android, loyalty GETs use bounded, redirect-rejecting HttpsURLConnection via a narrow method channel to match the Java client; coupon mutations remain on the existing serial transport. Preserve server-issued IDs and account/country binding.
+
+
+Flutter 0.8.1: square browse images with name/offer over a lightweight dark lower gradient, star at the top and plus/check beside the offer. No select-all-matching feature. Preserve lazy rendering, release builds and context-specific compact checkout/settings rows.
+
+Flutter 0.8.0 supersedes earlier Flutter layout choices: lazy one-column cards with a large image, star over the image, title/offer below and a plus beside them; inline live search; account/online filters in Settings; a contrasting checkout button; account-only checkout summaries with counts and expandable compact coupon rows. Favourite settings uses compact image/name/removal rows while retaining full snapshots. Build optimized release APKs for phone use with the existing local signing identity. Do not recompute checkoutPlan per browse card or start unlimited duplicate image requests. Profile GET may try the exact `/profile/api/v1/{country}/loyalty` alternate on the same host only after the original route returns 404; do not infer card IDs from JWT claims. Android cropped QR image import uses the system picker, bounded metadata-free re-encoding and existing encrypted account/country storage.
+
+Flutter 0.7.1: preserve list identity/scroll/images during operations; show activation progress only on affected coupons and accept additional selections during a serial batch. Settings has separate Accounts and Favourites screens, with coloured account cards and matching checkout groups. Use rounded white navigation/action cards consistently, and omit routine sync/language/status clutter. Match the working Java service transport's JSON Accept header and fixed UTF-8 body length. Keep real card-fetch errors visible without exposing provider bodies.
+
+The Flutter app in `coupon-pocket/flutter/` is now the actively tested multi-account app. The user's 0.7.0 flow supersedes the earlier layout choices below for Flutter: one column of aggregated image-led coupon cards; sale-size sorting; favourites first; top-right Settings for account/favourite management; search-menu account/online filters and selection of all results. Selection automatically activates coupons using the exact minimum-account cover of fresh usable copies, preferring active copies on ties. A bottom Checkout action opens a separate account-grouped screen with a back arrow; show only one labelled account QR at a time. Save favourite coupon fields/details and a bounded image preview in encrypted native storage. Preserve serial, server-confirmed mutations and no replay of uncertain results. The Java app remains a separate 0.3.0 artifact.
+
 This repository contains an independently written Android client for an existing Lidl Plus account. The app lives in `coupon-pocket/`; the repository root is not the Gradle project. Keep the implementation minimal and preserve the user's explicit choices:
 
 - Neutral grey/white surfaces, a thin **Coupon Pocket** header, compact two-column coupon cards.

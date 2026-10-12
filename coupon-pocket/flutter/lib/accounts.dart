@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'client.dart';
 import 'models.dart';
@@ -13,6 +14,7 @@ class Account {
   String card = '', error = '';
   DateTime? pendingSince, lastSync;
   bool importedCard = false, sessionExpired = false;
+  Uint8List? cardImage;
   bool get awaitingLogin => pendingSince != null;
   String get status => awaitingLogin
       ? 'Waiting for browser'
@@ -157,16 +159,27 @@ class AccountBook {
         : null;
     final imported = await a.api.load('import'),
         saved = await a.api.load('loyalty');
+    a.cardImage = null;
+    final image = string(imported['image']);
+    if (imported['country'] == a.api.country &&
+        image.isNotEmpty &&
+        image.length <= 720000) {
+      try {
+        a.cardImage = base64Decode(image);
+      } on FormatException {
+        /* Ignore a damaged import. */
+      }
+    }
+    a.importedCard =
+        imported['country'] == a.api.country &&
+        (string(imported['id']).isNotEmpty || a.cardImage != null);
     a.card = string(
-      imported['country'] == a.api.country
+      a.importedCard
           ? imported['id']
           : saved['country'] == a.api.country
           ? saved['id']
           : null,
     );
-    a.importedCard =
-        imported['country'] == a.api.country &&
-        string(imported['id']).isNotEmpty;
     final cache = await a.api.load('coupons');
     a.lastSync = cache['saved'] is int
         ? DateTime.fromMillisecondsSinceEpoch(cache['saved'])
@@ -329,6 +342,7 @@ Future<BatchResult> activateSelected(
   bool hideOnline,
   bool Function() cancelled, {
   void Function(Account)? progress,
+  void Function(OwnedCoupon)? onAttempt,
 }) async {
   final total = BatchResult();
   final grouped = <Account, List<Coupon>>{};
@@ -353,7 +367,11 @@ Future<BatchResult> activateSelected(
       group.value,
       hideOnline,
       cancelled,
+      onAttempt: (id) => onAttempt?.call(
+        OwnedCoupon(group.key, group.value.firstWhere((c) => c.id == id)),
+      ),
     );
+    total.confirmed.addAll(result.confirmed.map((id) => '${group.key.id}:$id'));
     total.activated += result.activated;
     total.skipped += result.skipped;
     total.choices += result.choices;

@@ -5,6 +5,8 @@ import 'dart:ui' as ui;
 import 'package:coupon_pocket/accounts.dart';
 import 'package:coupon_pocket/client.dart';
 import 'package:coupon_pocket/main.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:coupon_pocket/coupon_card.dart';
 import 'package:coupon_pocket/wire.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -21,7 +23,7 @@ void main() {
         );
   });
   testWidgets(
-    'combined selection preserves account ownership and Activated shows each QR',
+    'selection activates the minimum account cover and shows only one QR at a time',
     (tester) async {
       await initializeDateFormatting();
       // Optional local font paths make human-review previews readable without
@@ -87,36 +89,64 @@ void main() {
         tester.view.resetDevicePixelRatio();
       });
       final store = MemoryStore();
-      final fixtures = [
-        {
-          'id': 'oats',
-          'title': 'Oat drink',
-          'discount': {'title': '−25%', 'description': 'Selected varieties'},
-          'isActivated': false,
+      final data = {
+        'Home': {
+          'oats': {
+            'id': 'oats',
+            'title': 'Oat drink',
+            'discount': {'title': '25%'},
+            'isActivated': false,
+          },
+          'coffee': {
+            'id': 'coffee',
+            'title': 'Ground coffee',
+            'discount': {'title': '30%'},
+            'isActivated': false,
+          },
         },
-        {
-          'id': 'coffee',
-          'title': 'Ground coffee',
-          'discount': {'title': '−30%'},
-          'isActivated': true,
+        'Weekend': {
+          'oats': {
+            'id': 'oats',
+            'title': 'Oat drink',
+            'discount': {'title': '25%'},
+            'isActivated': false,
+          },
+          'fruit': {
+            'id': 'fruit',
+            'title': 'Fresh fruit',
+            'discount': {'title': '15%'},
+            'isActivated': false,
+          },
         },
-        {
-          'id': 'fruit',
-          'title': 'Fresh fruit',
-          'discount': {'title': '−15%'},
-          'isActivated': false,
-        },
-      ];
+      };
+      final mutations = <String>[];
       final template = Client(
         store,
-        send: (_, _, _, _, _) async => Reply(
-          200,
-          jsonEncode({
-            'sections': [
-              {'promotions': fixtures},
-            ],
-          }),
-        ),
+        send: (method, url, headers, body, type) async {
+          final name = headers['Authorization']!.replaceFirst(
+            'Bearer synthetic-',
+            '',
+          );
+          final account = data[name]!;
+          if (url.path.endsWith('promotionslist')) {
+            return Reply(
+              200,
+              jsonEncode({
+                'sections': [
+                  {'promotions': account.values.toList()},
+                ],
+              }),
+            );
+          }
+          final parts = url.pathSegments;
+          if (method == 'POST') {
+            final id = parts[parts.length - 2];
+            mutations.add('$name:$id');
+            account[id]!['isActivated'] = true;
+            return Reply(200, '{}');
+          }
+          return Reply(200, jsonEncode(account[parts.last]));
+        },
       );
       final book = AccountBook(template);
       await book.init();
@@ -145,54 +175,80 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Select +').first);
-      await tester.pumpAndSettle();
-      expect(find.text('ACTIVATE 1 SELECTED'), findsOneWidget);
+      Future<void> choose(String title) async {
+        final card = find.ancestor(
+          of: find.text(title),
+          matching: find.byType(CouponCard),
+        );
+        final button = find.descendant(
+          of: card,
+          matching: find.byTooltip('Select'),
+        );
+        await tester.ensureVisible(button);
+        await tester.pumpAndSettle();
+        await tester.tap(button);
+        await tester.pumpAndSettle();
+      }
+
       final boundary = tester.renderObject<RenderRepaintBoundary>(
         find.byKey(capture),
       );
-      await tester.runAsync(() async {
-        final image = await boundary.toImage();
-        final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-        final output = Directory('build/previews');
-        await output.create(recursive: true);
-        await File('${output.path}/coupons.png')
-            .writeAsBytes(bytes!.buffer.asUint8List());
-        image.dispose();
-      });
-      await tester.tap(find.text('Activated'));
+      Future<void> snapshot(String name) async {
+        await tester.runAsync(() async {
+          final image = await boundary.toImage();
+          final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+          await Directory('build/previews').create(recursive: true);
+          await File('build/previews/$name.png')
+              .writeAsBytes(bytes!.buffer.asUint8List());
+          image.dispose();
+        });
+      }
+
+      expect(find.text('Oat drink'), findsOneWidget);
+      await choose('Oat drink');
+      await choose('Fresh fruit');
+      expect(mutations.toSet(), {'Home:oats', 'Weekend:oats', 'Weekend:fruit'});
+      await snapshot('coupons');
+      await tester.tap(find.textContaining('Continue'));
       await tester.pumpAndSettle();
-      expect(find.byKey(ValueKey('qr-${a.id}')), findsOneWidget);
-      await tester.runAsync(() async {
-        final image = await boundary.toImage();
-        final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-        await File('build/previews/activated.png')
-            .writeAsBytes(bytes!.buffer.asUint8List());
-        image.dispose();
-      });
-      await tester.drag(find.byType(ListView).first, const Offset(0, -580));
+      expect(find.byType(QrImageView), findsNothing);
+      expect(find.text('Weekend'), findsOneWidget);
+      expect(find.text('Home'), findsNothing);
+      await snapshot('checkout');
+      await tester.tap(find.text('Show QR code'));
       await tester.pumpAndSettle();
-      expect(find.byKey(ValueKey('qr-${b.id}')), findsOneWidget);
-      expect(tester.takeException(), isNull);
-      await tester.tap(find.text('Coupons'));
+      expect(find.byType(QrImageView), findsOneWidget);
+      expect(
+        tester.widget<QrImageView>(find.byType(QrImageView)).key,
+        ValueKey('qr-${b.id}'),
+      );
+      await snapshot('qr');
+      await tester.tap(find.text('Done'));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(ChoiceChip, 'Weekend'));
+      expect(find.byType(QrImageView), findsNothing);
+      await tester.tap(find.byType(BackButton));
       await tester.pumpAndSettle();
-      expect(find.text('Selected'), findsNothing);
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Select +').first);
+      await choose('Ground coffee');
+      await tester.tap(find.textContaining('Continue'));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(ChoiceChip, 'ALL ACCOUNTS'));
+      expect(find.text('Home'), findsOneWidget);
+      expect(find.text('Weekend'), findsOneWidget);
+      expect(find.byType(QrImageView), findsNothing);
+      await tester.tap(find.text('Show QR code').first);
       await tester.pumpAndSettle();
-      expect(find.text('ACTIVATE 2 SELECTED'), findsOneWidget);
-      await tester.tap(find.text('Checkout'));
+      expect(find.byType(QrImageView), findsOneWidget);
+      expect(
+        tester.widget<QrImageView>(find.byType(QrImageView)).key,
+        ValueKey('qr-${a.id}'),
+      );
+      await tester.tap(find.text('Done'));
       await tester.pumpAndSettle();
-      await tester.runAsync(() async {
-        final image = await boundary.toImage();
-        final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-        await File('build/previews/checkout.png')
-            .writeAsBytes(bytes!.buffer.asUint8List());
-        image.dispose();
-      });
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Settings'));
+      await tester.pumpAndSettle();
+      expect(find.byType(QrImageView), findsNothing);
+      await snapshot('settings');
       expect(tester.takeException(), isNull);
     },
   );

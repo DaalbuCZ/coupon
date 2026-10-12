@@ -272,6 +272,7 @@ class Client {
   Future<String> request(String method, String url, [String? body]) async {
     validateLocale();
     final headers = {
+      'Accept': 'application/json',
       'Authorization': 'Bearer ${await access()}',
       'Country': country,
       'Accept-Language': language,
@@ -291,9 +292,7 @@ class Client {
       reply = await send(method, Uri.parse(url), headers, body, null);
     }
     if (!reply.ok) {
-      throw FormatException(
-        'Service request failed (HTTP ${reply.status}). No change was confirmed. Refresh before retrying.',
-      );
+      throw ServiceException(reply.status);
     }
     return reply.body;
   }
@@ -354,18 +353,32 @@ class Client {
   }
 
   Future<String> card() async {
-    final id = loyalty(
-      await request(
+    String response;
+    try {
+      response = await request(
         'GET',
         'https://profile.lidlplus.com/api/v1/$country/loyalty',
-      ),
-    );
+      );
+    } on ServiceException catch (e) {
+      if (e.status != 404) rethrow;
+      try {
+        response = await request(
+          'GET',
+          'https://profile.lidlplus.com/profile/api/v1/$country/loyalty',
+        );
+      } on ServiceException catch (fallback) {
+        if (fallback.status != 404) rethrow;
+        throw const CardUnavailableException();
+      }
+    }
+    final id = loyalty(response);
     await store.write('loyalty', jsonEncode({'id': id, 'country': country}));
     return id;
   }
 }
 
 class BatchResult {
+  final confirmed = <String>{};
   int activated = 0, skipped = 0, choices = 0;
   bool cancelled = false;
   Object? failure;
@@ -375,8 +388,9 @@ Future<BatchResult> bulk(
   Client api,
   List<Coupon> confirmed,
   bool hideOnline,
-  bool Function() cancelled,
-) async {
+  bool Function() cancelled, {
+  void Function(String)? onAttempt,
+}) async {
   final result = BatchResult();
   final ids = confirmed
       .where((c) => !c.activated && !c.processing && (!hideOnline || !c.online))
@@ -401,6 +415,7 @@ Future<BatchResult> bulk(
       }
       final d = await api.detail(c.id, c.section);
       if (d.activated || (hideOnline && d.online)) {
+        if (d.activated) result.confirmed.add(c.id);
         result.skipped++;
         continue;
       }
@@ -420,11 +435,13 @@ Future<BatchResult> bulk(
         break;
       }
       await api.store.delete('coupons');
+      onAttempt?.call(c.id);
       await api.request(
         'POST',
         '${Client.base}v2/promotions/${Uri.encodeComponent(d.id)}/activation',
         '{"articleSelection":[]}',
       );
+      result.confirmed.add(c.id);
       result.activated++;
     }
     if (!result.cancelled) result.skipped += ids.length - seen.length;

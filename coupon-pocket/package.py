@@ -35,6 +35,9 @@ if web.is_dir() and (web / 'main.dart.js').is_file():
 apk = dist / 'coupon-pocket-dev.apk'
 if apk.is_file():
     artifacts.append(apk)  # Existing Java APK; never silently replace it with another build.
+flutter_apk = dist / 'coupon-pocket-flutter-dev.apk'
+if flutter_apk.is_file():
+    artifacts.append(flutter_apk)
 (dist / 'SHA256SUMS').write_text(''.join(
     f'{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n' for path in sorted(artifacts)
 ), encoding='ascii')

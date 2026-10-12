@@ -17,6 +17,10 @@ Implementation: fetch the authenticated server-issued loyalty ID; encrypt it wit
 
 Limit: this is a legacy native card path. The APK also has a React Native / Axion customer-card path. The current checkout's required format and market-specific receipt flags still need live validation. No claim of verified checkout acceptance is made.
 
+### Flutter 0.8.0 routing investigation
+
+The user reports authenticated HTTP 404 from the original loyalty route. The alternate exact GET path `https://profile.lidlplus.com/profile/api/v1/{country}/loyalty` is present in [Andre0512's client source](https://github.com/Andre0512/lidl-plus/blob/master/lidlplus/api.py). Flutter tries it only after 404 from the original path, without broadening the host or inventing response formats. This source establishes a known route, not present-day availability; workstation unauthenticated probes could not connect. Both routes returning 404 leads to an existing-card import offer. Native Android image imports display a re-encoded cropped image, not a fabricated QR payload. No OAuth subject or other claim is used as a card ID.
+
 ## Coupon product groups
 
 Observed models in `es.lidlplus.features.coupons.data.api.coupons.model`:
@@ -67,3 +71,9 @@ Version 0.2.2 also removes FLAG_SECURE entirely per the user's explicit request.
 ## Discount labels (0.2.5)
 
 `PromotionDiscountModel` supplies the JSON string fields `title`, `description`, `scope`, `purchaseType`, `posType`, plus boolean `hasAsterisk`. Display uses the supplied `title` and `description` rather than inferring numeric amount/type or currency. Conditional asterisks are retained. The DEX model is preserved in `analysis/coupon-discount-model.smali`. Coupon dates use `validity.end` (offset date-time) or the legacy end-validity field, formatted as a calendar date using the selected language. Formatting does not alter eligibility validation.
+
+## Flutter 0.9.0 card transport investigation
+
+Reinspection of the user-supplied 17.11.6 APK confirms `udn.d` GET `v1/{country}/loyalty` returning a string and `k63`'s production base `https://profile.lidlplus.com/api/`. Its React Native bundle exposes a loyalty-ID accessor; a different current card endpoint has not been established by this static inspection. No new endpoint or JWT card payload is inferred.
+
+The user reports that both the official app and Java Coupon Pocket display a working card for the same account. Flutter and Java construct the same original URL and explicit request fields. Flutter 0.9.0 changes Android card reads from Dart HttpClient to the Java app's HttpsURLConnection implementation, keeping normal platform TLS, no redirects, bounded responses and the exact allowlist. This targets the remaining transport difference; it does not prove the root cause of the reported 404. Offline checks verify bridge request fields and rejection of mutations; live card retrieval still requires phone confirmation.
