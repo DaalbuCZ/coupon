@@ -1,0 +1,10 @@
+/.aws/
+/.codex/
+/.agents/
+/*.apk
+/analysis/*
+!/analysis/*.md
+!/analysis/*.py
+/coupon-pocket/dist/*
+!/coupon-pocket/dist/coupon-pocket-dev.apk
+!/coupon-pocket/dist/SHA256SUMS

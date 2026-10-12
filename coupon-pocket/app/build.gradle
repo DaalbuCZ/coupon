@@ -1,0 +1,18 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'local.couponpocket'
+    compileSdk 36
+    defaultConfig {
+        applicationId 'local.couponpocket'
+        minSdk 28
+        targetSdk 35
+        versionCode 7
+        versionName '0.2.5'
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    buildTypes { release { minifyEnabled false } }
+}
+// No Maven runtime dependencies: Android framework + vendored offline QR encoder.
