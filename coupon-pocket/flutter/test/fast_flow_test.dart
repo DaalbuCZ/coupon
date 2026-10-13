@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:coupon_pocket/client.dart';
 import 'package:coupon_pocket/coupon_card.dart';
 import 'package:coupon_pocket/coupon_deck.dart';
+import 'package:coupon_pocket/wide_coupon_card.dart';
 import 'package:coupon_pocket/cover_scroll.dart';
 import 'package:coupon_pocket/main.dart';
 import 'package:coupon_pocket/wire.dart';
@@ -217,11 +218,31 @@ void main() {
     await tester.pumpAndSettle();
     expect(posts, 2);
     expect(find.text('Active'), findsNothing);
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Appearance'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Wide cards'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Dark mode'));
+    await tester.pumpAndSettle();
+    final appearance = jsonDecode((await store.read('appearance'))!);
+    expect(appearance['layout'], 'wide');
+    expect(appearance['dark'], true);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    expect(find.byType(CouponDeck), findsNothing);
+    expect(
+      tester.widget<WideCouponCard>(find.byType(WideCouponCard)).selected,
+      true,
+    );
     await tester.tap(find.text('Continue · 1'));
     await tester.pumpAndSettle();
     expect(find.text('Scan this card at checkout'), findsOneWidget);
     expect(find.text('Needs activation'), findsNothing);
-    expect(find.text('1 selected offers'), findsOneWidget);
+    expect(find.text('1 selected offer'), findsOneWidget);
     expect(find.text('Sample 099'), findsOneWidget);
     await tester.tap(find.text('Sample 099'));
     await tester.pumpAndSettle();

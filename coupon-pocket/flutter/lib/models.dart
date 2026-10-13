@@ -18,6 +18,20 @@ class Coupon {
   String get id => string(raw['id']);
   String get title => string(raw['title'], 'Coupon');
   bool get activated => raw['isActivated'] == true;
+  bool finished(DateTime now) {
+    if (raw['isRedeemed'] == true) return true;
+    final end = string(
+      object(raw['validity'])['end'],
+      string(
+        object(raw['validity'])['endDate'],
+        string(raw['endValidityDate']),
+      ),
+    );
+    if (!RegExp(r'(Z|[+-]\d{2}:\d{2})$').hasMatch(end)) return false;
+    final time = DateTime.tryParse(end);
+    return time != null && now.isAfter(time);
+  }
+
   bool get processing => raw['isProcessing'] == true;
   bool get online {
     final channel = string(raw['channel']).trim().toUpperCase();

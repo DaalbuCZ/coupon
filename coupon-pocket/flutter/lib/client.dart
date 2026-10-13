@@ -80,7 +80,7 @@ class Client {
   Future<Json> load(String key) async =>
       object(jsonDecode(await store.read(key) ?? '{}'));
   String country = 'CZ', language = 'cs-CZ', storeId = '';
-  bool hideOnline = false, pictures = true;
+  bool hideOnline = true, pictures = true;
   void validateLocale() {
     if (!RegExp(r'^[A-Z]{2}$').hasMatch(country) ||
         !RegExp(r'^[a-z]{2,3}(-[A-Z]{2})?$').hasMatch(language)) {
@@ -95,7 +95,7 @@ class Client {
     country = string(p['country'], 'CZ');
     language = string(p['language'], 'cs-CZ');
     storeId = string(p['store']);
-    hideOnline = p['hideOnline'] == true;
+    hideOnline = p['hideOnline'] != false;
     pictures = p['pictures'] != false;
     validateLocale();
   }

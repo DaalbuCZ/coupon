@@ -1,0 +1,7 @@
+# Lidl++ launcher icon
+
+Generated and refined with the built-in image generation tool using the user-provided Lidl reference. The final transparent source retains the yellow circle, thin red rim, dominant thick angular Lidl L and smaller blue plus signs. Android supplies a separate blue adaptive background; the launcher export adds safe margins. iOS and web receive flattened launcher-size exports.
+
+Final refinement prompt:
+
+Use case: precise-object-edit. Edit the most recent generated Lidl L++ circular icon. Preserve its exact signature thick angular blue Lidl L silhouette, including slab serifs and the upward slanted wedge at the lower-right foot, the yellow circle, transparent exterior, and original blue/yellow/red palette. Change only the relative proportions: reduce the red circular border thickness to HALF its present thickness; enlarge the L by about 25 percent while keeping its original shape; make each blue plus sign about 65 percent of its present size, aligned around the vertical midpoint of the L. The L must be the dominant shape and the ++ a smaller companion. Center the combined L++ wordmark in the yellow circle with comfortable balanced margins. Both plus signs remain identical, square-ended and legible, with visible gaps between L and ++ and between the two pluses. No additional shapes, no rounded letterforms, no shadows or gradients. Keep a transparent square canvas outside the circle. Return a clean flat transparent adaptive-icon foreground layer.

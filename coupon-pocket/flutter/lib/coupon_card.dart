@@ -144,22 +144,27 @@ class CouponCard extends StatelessWidget {
                 ],
               ),
             ),
-            if (selected || favourite)
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(22),
-                      border: Border.all(
-                        color: selected
-                            ? const Color(0xffb6f52a)
-                            : const Color(0xffffd43b),
-                        width: selected ? 4 : 2,
-                      ),
+            Positioned.fill(
+              child: IgnorePointer(
+                child: AnimatedContainer(
+                  duration: MediaQuery.disableAnimationsOf(context)
+                      ? Duration.zero
+                      : const Duration(milliseconds: 160),
+                  curve: Curves.easeOut,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(
+                      color: selected
+                          ? const Color(0xffb6f52a)
+                          : favourite
+                          ? const Color(0xffffd43b)
+                          : Colors.transparent,
+                      width: selected ? 4 : 2,
                     ),
                   ),
                 ),
               ),
+            ),
           ],
         ),
       ),

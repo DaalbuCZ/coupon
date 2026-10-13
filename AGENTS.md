@@ -2,6 +2,24 @@
 
 ## Scope and established product choices
 
+Flutter 0.14.2: show a fullscreen, theme-aware clearing progress screen for the entire refresh/deactivation/reconciliation operation. Block taps/back while it runs, remove it on every completion path, and preserve lifecycle cancellation and no replay.
+
+Flutter 0.14.1 supersedes local-only Clear: Clear shopping list serially deactivates all selected real account copies after fresh checks, stops on failure/cancellation and never replays uncertain DELETEs. Every successful refresh reconciles server activations/deactivations with selection; keep unfinished local product choices and uncertain attempts separate. Use a quick horizontal predictive back transition with cancel/commit and reduced-motion support, without scaling.
+
+Flutter 0.14.0: restore fresh server-active offers into shopping selection on startup without mutations. Refresh on foreground return and checkout entry; remove redeemed, expired or vanished selected account occurrences only after successful reads. Preserve selections on read failure and never replay uncertain mutations. Online offers default hidden while preserving explicit saved preferences. Account covers are square; dynamic offer/product counts use singular labels. Use Material route navigation with Android predictive back, reduced-motion-aware selection outlines and borderless expanded information panels. Online artwork trims a bounded decoded edge pixel.
+
+Flutter 0.13.5: wide artwork extensions use separate median samples of the left and right image edges. Fill the left extension with the left sample and the right inset with the right sample. Use one bounded thumbnail decode; details retain top-edge sampling.
+
+Flutter 0.13.4: group visually identical offers by country, normalized title/benefit and channel. Dates, described limits and descriptions remain account-copy metadata, not display-group identity. Prefer a usable copy for the card preview. QR planning and mutations still use each copy's real eligibility, ID and fresh details; never discard the account-specific rules.
+
+Flutter 0.13.3: plain Lidl++ main title, no in-app logo. Shared offer identity excludes account-specific promotion IDs; match country, normalized title/benefit/discount description, calendar validity and channel. Preserve real per-account IDs for fresh detail checks and mutations. Browse/checkout show each shared offer once. Exact set cover minimizes QR/account count before preferring active copies; no automatic replay of uncertain requests.
+
+Flutter 0.13.2: show the bundled circular L++ logo beside the main Lidl++ header title. Keep search replacing the whole title area; decode the static thumbnail at a bounded size and avoid redundant logo semantics.
+
+Flutter 0.13.1: displayed app name is Lidl++, retaining the existing package IDs and signing identity. Wide-card star/info controls are vertically centered with 70% opaque white surfaces; square images are inset 18 logical pixels from the right. Horizontal background extensions sample the artwork's left edge. Launcher preserves the signature yellow Lidl circle with red rim and simple L++ lettering, over a separate blue adaptive background; no hexagon or extra outer outline.
+
+Flutter 0.13.0: Settings → Appearance contains layout and theme. Preserve the frozen 3D stack as the default; optional Wide cards use ordinary lazy scrolling, square artwork aligned right with sampled background extension, and the same selection/favourite/details flow. Persist layout and theme together through serialized local writes. Switching layout must retain shopping selections and search.
+
 Flutter 0.12.3: all exposed carousel cards accept direct selection, favourite and details taps. No off-centre IgnorePointer or tap-to-focus wrapper. Preserve transformed hit testing, frontmost-card paint/hit order, native scroll drag arbitration and bounded card reuse.
 
 Flutter 0.12.2: single lime selection outline, no white under-border. Lower detail artwork by the system inset plus 32 logical pixels; extend its sampled top-edge colour to the screen top. Sample once through a bounded thumbnail, dispose decode resources, preserve token-free picture loading and parallax.

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/services.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -21,6 +22,9 @@ import 'coupon_card.dart';
 import 'coupon_deck.dart';
 import 'cover_scroll.dart';
 import 'offer_cover.dart';
+import 'artwork.dart';
+import 'sideways_back.dart';
+import 'wide_coupon_card.dart';
 import 'wire.dart' show CardUnavailableException;
 
 const ink = Color(0xff171713),
@@ -62,6 +66,7 @@ enum PocketPage {
   coupons,
   checkout,
   settings,
+  appearance,
   favourites,
   accounts,
   account,
@@ -95,6 +100,8 @@ class PocketApp extends StatefulWidget {
 
 class _PocketAppState extends State<PocketApp> {
   bool dark = false;
+  CouponLayout layout = CouponLayout.stack;
+  final appearanceWrites = SerialQueue();
   final messenger = GlobalKey<ScaffoldMessengerState>();
   @override
   void initState() {
@@ -102,17 +109,33 @@ class _PocketAppState extends State<PocketApp> {
     widget.client
         .load('appearance')
         .then((value) {
-          if (mounted) setState(() => dark = value['dark'] == true);
+          if (mounted) {
+            setState(() {
+              dark = value['dark'] == true;
+              layout = value['layout'] == 'wide'
+                  ? CouponLayout.wide
+                  : CouponLayout.stack;
+            });
+          }
         })
         .catchError((Object _) {});
   }
 
   Future<void> changeDark(bool value) async {
     setState(() => dark = value);
+    await saveAppearance();
+  }
+
+  Future<void> changeLayout(CouponLayout value) async {
+    setState(() => layout = value);
+    await saveAppearance();
+  }
+
+  Future<void> saveAppearance() async {
+    final preferences = jsonEncode({'dark': dark, 'layout': layout.name});
     try {
-      await widget.client.store.write(
-        'appearance',
-        jsonEncode({'dark': value}),
+      await appearanceWrites.run(
+        () => widget.client.store.write('appearance', preferences),
       );
     } catch (_) {
       messenger.currentState?.showSnackBar(
@@ -139,7 +162,7 @@ class _PocketAppState extends State<PocketApp> {
         );
     return MaterialApp(
       scaffoldMessengerKey: messenger,
-      title: 'Coupon Pocket',
+      title: 'Lidl++',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
@@ -187,6 +210,16 @@ class _PocketAppState extends State<PocketApp> {
           ),
           backgroundColor: scheme.surface,
         ),
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: {
+            TargetPlatform.android: SidewaysBackTransitionsBuilder(),
+            TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          },
+        ),
+        expansionTileTheme: const ExpansionTileThemeData(
+          shape: Border(),
+          collapsedShape: Border(),
+        ),
         inputDecorationTheme: const InputDecorationTheme(
           border: OutlineInputBorder(
             borderRadius: BorderRadius.all(Radius.circular(14)),
@@ -203,12 +236,16 @@ class _PocketAppState extends State<PocketApp> {
         loginSupported: widget.loginSupported,
         dark: dark,
         onDarkChanged: changeDark,
+        layout: layout,
+        onLayoutChanged: changeLayout,
       ),
     );
   }
 }
 
 class PocketHome extends StatefulWidget {
+  final CouponLayout layout;
+  final ValueChanged<CouponLayout>? onLayoutChanged;
   final bool dark;
   final ValueChanged<bool>? onDarkChanged;
   final Client client;
@@ -218,6 +255,8 @@ class PocketHome extends StatefulWidget {
     super.key,
     this.dark = false,
     this.onDarkChanged,
+    this.layout = CouponLayout.stack,
+    this.onLayoutChanged,
     required this.client,
     this.worker,
     this.loginSupported,
@@ -230,6 +269,7 @@ class _PocketHomeState extends State<PocketHome> with WidgetsBindingObserver {
   late final book = AccountBook(widget.client);
   late final queue = widget.worker ?? Client.worker;
   final selected = <String>{};
+  final pendingSelections = <String>{};
   String? accountFilter;
   String search = '';
   bool searching = false;
@@ -243,14 +283,16 @@ class _PocketHomeState extends State<PocketHome> with WidgetsBindingObserver {
   bool qrOpen = false;
   Account? openedAccount;
   bool refreshing = false;
+  bool foreground = true;
   final activating = <String>{};
   final deactivating = <String>{};
   final pendingRemovals = <String, CouponOffer>{};
   bool selectionChanged = false;
   String? latestSelection;
   PocketPage page = PocketPage.coupons;
+  final pageNavigator = GlobalKey<NavigatorState>();
   final scroll = ScrollController();
-  bool hideOnline = false, busy = false, batching = false, cancelled = false;
+  bool hideOnline = true, busy = false, batching = false, cancelled = false;
   int pendingWork = 0;
   StreamSubscription<Uri>? links;
   Timer? loginExpiry;
@@ -270,14 +312,18 @@ class _PocketHomeState extends State<PocketHome> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     work(() async {
       await book.init();
-      hideOnline = (await widget.client.load('view'))['hideOnline'] == true;
+      final view = await widget.client.load('view');
+      hideOnline = view['hideOnline'] != false;
       await favouriteBook.load();
-      if (book.accounts.length == 1 && !hideOnline) {
-        hideOnline = book.accounts.first.api.hideOnline;
-      }
       await refreshAll();
+      restoreActiveSelection();
     });
     loginExpiry = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!foreground || busy) return;
+      if (page == PocketPage.checkout) {
+        work(refreshAll);
+        return;
+      }
       if (!busy &&
           book.accounts.any(
             (a) =>
@@ -309,10 +355,14 @@ class _PocketHomeState extends State<PocketHome> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    foreground = state == AppLifecycleState.resumed;
     if (state != AppLifecycleState.resumed) {
       cancelled = true;
     } else {
-      work(book.expirePending);
+      work(() async {
+        await book.expirePending();
+        await refreshAll();
+      });
     }
   }
 
@@ -362,6 +412,9 @@ class _PocketHomeState extends State<PocketHome> with WidgetsBindingObserver {
         failures.add('${a.label}: ${a.error}');
       }
     }
+    reconcileSelection();
+    pruneSelection();
+    restoreActiveSelection();
     assigned.addAll(checkoutPlan(allOffers, selected));
     if (failures.isNotEmpty) notice(failures.join('\n'));
     if (mounted) setState(() {});
@@ -385,6 +438,7 @@ class _PocketHomeState extends State<PocketHome> with WidgetsBindingObserver {
     clearPictures();
     if (mounted) setState(() {});
     await book.refresh(a);
+    restoreActiveSelection();
     try {
       await loadCard(a);
     } catch (_) {
@@ -559,6 +613,7 @@ class _PocketHomeState extends State<PocketHome> with WidgetsBindingObserver {
       d = await a.api.detail(entry.coupon.id, entry.coupon.section);
     });
     if (d == null || !mounted) return;
+    if (chooseProducts) notice('');
     final detail = d!, choices = <String, String>{};
     for (final g in detail.groups) {
       final existing = (g['articles'] as List)
@@ -578,6 +633,7 @@ class _PocketHomeState extends State<PocketHome> with WidgetsBindingObserver {
               onBack: () => Navigator.pop(ctx),
               cover: a.api.pictures && detail.image.isNotEmpty
                   ? OfferCover(
+                      trimEdge: detail.online,
                       url: detail.image,
                       topInset: MediaQuery.paddingOf(ctx).top + 32,
                     )
@@ -665,6 +721,57 @@ class _PocketHomeState extends State<PocketHome> with WidgetsBindingObserver {
     });
   }
 
+  // The server owns activation state. Restoring selection never sends a mutation.
+  void restoreActiveSelection() {
+    for (final offer in allOffers) {
+      final active = offer.copies.where(
+        (e) => e.coupon.activated && usableCopy(e),
+      );
+      if (active.isEmpty ||
+          pendingRemovals.containsKey(offer.key) ||
+          deactivating.contains(offer.key)) {
+        continue;
+      }
+      selected.add(offer.key);
+      selectionCache[offer.key] = active.first;
+      pendingSelections.remove(offer.key);
+    }
+    final offers = {for (final offer in allOffers) offer.key: offer};
+    for (final key in selected.toList()) {
+      if (pendingSelections.contains(key)) continue;
+      final copies = offers[key]?.copies;
+      if (copies == null || copies.any((e) => !e.account.fresh)) continue;
+      if (copies.any((e) => e.coupon.activated && usableCopy(e))) continue;
+      selected.remove(key);
+      pendingSelections.remove(key);
+      assigned.remove(key);
+      selectionCache.remove(key);
+    }
+    assigned.addAll(plan);
+  }
+
+  void pruneSelection() {
+    final copies = {
+      for (final a in book.accounts)
+        for (final c in a.coupons) a.key(c): OwnedCoupon(a, c),
+    };
+    for (final key in selected.toList()) {
+      final old = assigned[key] ?? selectionCache[key];
+      if (old == null || !old.account.fresh) continue;
+      final latest = copies[old.key];
+      if (latest != null &&
+          !couponFinished(latest.coupon, old.account.api.clock()) &&
+          occurrenceKey(old) == occurrenceKey(latest)) {
+        continue;
+      }
+      selected.remove(key);
+      pendingSelections.remove(key);
+      assigned.remove(key);
+      selectionCache.remove(key);
+      attempted.remove(old.key);
+    }
+  }
+
   void reconcileSelection() {
     final copies = {for (final e in combined(book.accounts)) e.key: e};
     for (final key in selected.toList()) {
@@ -672,12 +779,14 @@ class _PocketHomeState extends State<PocketHome> with WidgetsBindingObserver {
       final latest = copies[old?.key];
       if (old == null ||
           latest == null ||
-          occurrenceKey(old) != occurrenceKey(latest))
+          occurrenceKey(old) != occurrenceKey(latest)) {
         continue;
+      }
       final next = offerKey(latest);
       if (next == key) continue;
       selected.remove(key);
       selected.add(next);
+      if (pendingSelections.remove(key)) pendingSelections.add(next);
       assigned.remove(key);
       selectionCache.remove(key);
       assigned[next] = latest;
@@ -708,6 +817,7 @@ class _PocketHomeState extends State<PocketHome> with WidgetsBindingObserver {
         .toList();
     for (final key in affected) {
       selected.remove(key);
+      pendingSelections.remove(key);
       assigned.remove(key);
       selectionCache.remove(key);
     }
@@ -717,6 +827,7 @@ class _PocketHomeState extends State<PocketHome> with WidgetsBindingObserver {
     if (batching) cancelled = true;
     setState(
       () => page = switch (page) {
+        PocketPage.appearance ||
         PocketPage.favourites ||
         PocketPage.accounts ||
         PocketPage.filters => PocketPage.settings,
@@ -735,6 +846,7 @@ class _PocketHomeState extends State<PocketHome> with WidgetsBindingObserver {
     if (selected.contains(offer.key)) {
       setState(() {
         selected.remove(offer.key);
+        pendingSelections.remove(offer.key);
         pendingRemovals[offer.key] = offer;
         assigned.remove(offer.key);
         selectionCache.remove(offer.key);
@@ -749,6 +861,7 @@ class _PocketHomeState extends State<PocketHome> with WidgetsBindingObserver {
     setState(() {
       pendingRemovals.remove(offer.key);
       selected.add(offer.key);
+      pendingSelections.add(offer.key);
       selectionCache[offer.key] = offer.preview;
     });
     if (inFlight) {
@@ -760,17 +873,113 @@ class _PocketHomeState extends State<PocketHome> with WidgetsBindingObserver {
     await activateSelection(latestKey: offer.key);
   }
 
-  Future<void> deactivateRemoved() async {
+  Future<void> clearShoppingList() async {
+    if (busy) return;
+    cancelled = false;
+    final navigator = Navigator.of(context, rootNavigator: true);
+    final overlay = DialogRoute<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => PopScope(
+        canPop: false,
+        child: Dialog.fullscreen(
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          child: SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(32),
+                child: Semantics(
+                  liveRegion: true,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.shopping_bag_outlined,
+                        size: 56,
+                        color: Color(0xffa43e3e),
+                      ),
+                      const SizedBox(height: 28),
+                      Text(
+                        'Clearing shopping list',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.headlineSmall
+                            ?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Please wait while your coupons are deactivated.',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodyLarge,
+                      ),
+                      const SizedBox(height: 32),
+                      const SizedBox(
+                        width: 44,
+                        height: 44,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 3,
+                          color: Color(0xffa43e3e),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    navigator.push(overlay);
+    try {
+      await work(() async {
+        await refreshAll();
+        final offers = {for (final offer in allOffers) offer.key: offer};
+        final targets = [
+          for (final key in selected)
+            if (offers[key] != null) offers[key]!,
+        ];
+        if (targets.any((offer) => offer.copies.any((e) => !e.account.fresh))) {
+          throw const FormatException(
+            'Refresh all selected accounts before clearing the shopping list.',
+          );
+        }
+        for (final offer in targets) {
+          pendingRemovals[offer.key] = offer;
+        }
+        if (mounted) setState(() {});
+        try {
+          await deactivateRemoved(clearing: true);
+        } finally {
+          await refreshAll();
+        }
+        if (mounted && selected.isEmpty) {
+          setState(() => page = PocketPage.coupons);
+        }
+      });
+    } finally {
+      if (overlay.isActive) navigator.removeRoute(overlay);
+    }
+  }
+
+  Future<void> deactivateRemoved({bool clearing = false}) async {
     while (pendingRemovals.isNotEmpty) {
+      if (cancelled) {
+        pendingRemovals.clear();
+        break;
+      }
       final entry = pendingRemovals.entries.first;
       // Consume the intent before sending: a failed DELETE is never replayed.
       pendingRemovals.remove(entry.key);
-      if (selected.contains(entry.key)) continue;
+      if (!clearing && selected.contains(entry.key)) continue;
       deactivating.add(entry.key);
       if (mounted) setState(() {});
       final seen = <String>{};
       try {
         for (final copy in entry.value.copies) {
+          if (cancelled) {
+            pendingRemovals.clear();
+            return;
+          }
           final a = copy.account;
           if (!book.accounts.contains(a) || !seen.add(copy.key)) continue;
           if (!a.fresh) await book.refresh(a);
@@ -778,7 +987,11 @@ class _PocketHomeState extends State<PocketHome> with WidgetsBindingObserver {
             copy.coupon.id,
             copy.coupon.section,
           );
-          if (!detail.activated) continue;
+          if (!detail.activated ||
+              detail.finished(a.api.clock()) ||
+              detail.processing) {
+            continue;
+          }
           a.fresh = false;
           try {
             await a.api.mutate(detail, false, {});
@@ -789,6 +1002,10 @@ class _PocketHomeState extends State<PocketHome> with WidgetsBindingObserver {
             } catch (_) {}
           }
         }
+        selected.remove(entry.key);
+        pendingSelections.remove(entry.key);
+        assigned.remove(entry.key);
+        selectionCache.remove(entry.key);
       } catch (_) {
         pendingRemovals.clear();
         rethrow;
@@ -863,6 +1080,11 @@ class _PocketHomeState extends State<PocketHome> with WidgetsBindingObserver {
           ];
         }
         reconcileSelection();
+        for (final key in pendingSelections.toList()) {
+          final copy = assigned[key] ?? selectionCache[key];
+          if (copy != null && result?.confirmed.contains(copy.key) == true)
+            pendingSelections.remove(key);
+        }
         assigned.addAll(plan);
         activating.clear();
         if (mounted && page == PocketPage.checkout) prepareCheckoutCard();
@@ -991,218 +1213,256 @@ class _PocketHomeState extends State<PocketHome> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     reconcileSelection();
+    final pages = <PocketPage>[
+      PocketPage.coupons,
+      if (page != PocketPage.coupons && page != PocketPage.checkout)
+        PocketPage.settings,
+      if (page == PocketPage.account) PocketPage.accounts,
+      if (page != PocketPage.coupons && page != PocketPage.settings) page,
+    ];
+    return NavigatorPopHandler<Object?>(
+      onPopWithResult: (result) => pageNavigator.currentState!.pop(result),
+      child: Navigator(
+        key: pageNavigator,
+        pages: [
+          for (final current in pages)
+            MaterialPage<Object?>(
+              key: ValueKey(current),
+              child: Builder(builder: (context) => buildPage(context, current)),
+            ),
+        ],
+        onDidRemovePage: (removed) {
+          if (removed.key == ValueKey(page)) back();
+        },
+      ),
+    );
+  }
+
+  Widget buildPage(BuildContext context, PocketPage current) {
+    final page = current;
     final home = page == PocketPage.coupons;
     final offers = aggregateCoupons(visible);
     final ordered = browseRows(offers).whereType<CouponOffer>().toList();
-    return PopScope(
-      canPop: home,
-      onPopInvokedWithResult: (didPop, result) {
-        if (!didPop) back();
-      },
-      child: Scaffold(
-        appBar: page == PocketPage.account
-            ? null
-            : AppBar(
-                toolbarHeight: 64,
-                leading: home ? null : BackButton(onPressed: back),
-                title: home && searching
-                    ? TextField(
-                        controller: searchInput,
-                        autofocus: true,
-                        decoration: const InputDecoration(
-                          hintText: 'Search coupons',
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                        onChanged: (value) => setState(() => search = value),
-                      )
-                    : Text(
-                        switch (page) {
-                          PocketPage.coupons => 'Coupon Pocket',
-                          PocketPage.checkout => 'Checkout',
-                          PocketPage.settings => 'Settings',
-                          PocketPage.favourites => 'Favourites',
-                          PocketPage.accounts => 'Accounts',
-                          PocketPage.account =>
-                            openedAccount?.label ?? 'Account',
-                          PocketPage.filters => 'Coupon filters',
-                        },
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -.6,
-                        ),
+    return Scaffold(
+      appBar: page == PocketPage.account
+          ? null
+          : AppBar(
+              toolbarHeight: 64,
+              leading: home ? null : BackButton(onPressed: back),
+              title: home && searching
+                  ? TextField(
+                      controller: searchInput,
+                      autofocus: true,
+                      decoration: const InputDecoration(
+                        hintText: 'Search coupons',
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        contentPadding: EdgeInsets.zero,
                       ),
-                actions: [
-                  if (batching)
-                    IconButton(
-                      tooltip: 'Stop activation',
-                      onPressed: () => cancelled = true,
-                      icon: const Icon(Icons.stop_circle_outlined),
-                    ),
-                  if (busy && !refreshing && !batching)
-                    const Padding(
-                      padding: EdgeInsets.all(20),
-                      child: SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    ),
-                  if (home) ...[
-                    IconButton(
-                      tooltip: searching ? 'Close search' : 'Search',
-                      icon: Icon(
-                        searching ? Icons.close_rounded : Icons.search_rounded,
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          searching = !searching;
-                          if (!searching) {
-                            search = '';
-                            searchInput.clear();
-                          }
-                        });
-                        if (!searching) FocusScope.of(context).unfocus();
+                      onChanged: (value) => setState(() => search = value),
+                    )
+                  : Text(
+                      switch (page) {
+                        PocketPage.coupons => 'Lidl++',
+                        PocketPage.checkout => 'Checkout',
+                        PocketPage.settings => 'Settings',
+                        PocketPage.appearance => 'Appearance',
+                        PocketPage.favourites => 'Favourites',
+                        PocketPage.accounts => 'Accounts',
+                        PocketPage.account => openedAccount?.label ?? 'Account',
+                        PocketPage.filters => 'Coupon filters',
                       },
-                    ),
-                    IconButton(
-                      tooltip: 'Settings',
-                      icon: const Icon(Icons.settings_outlined),
-                      onPressed: () =>
-                          setState(() => page = PocketPage.settings),
-                    ),
-                  ],
-                ],
-              ),
-        body: page == PocketPage.account && openedAccount != null
-            ? CoverScroll(
-                title: openedAccount!.label,
-                onBack: back,
-                titleAction: IconButton(
-                  tooltip: 'Rename account',
-                  icon: const Icon(Icons.edit_outlined),
-                  onPressed: busy
-                      ? null
-                      : () => accountAction(openedAccount!, 'rename'),
-                ),
-                coverHeight: 160,
-                cover: ColoredBox(
-                  color: accountColor(openedAccount!).withValues(alpha: .18),
-                  child: Icon(
-                    Icons.person_outline_rounded,
-                    size: 88,
-                    color: accountColor(openedAccount!),
-                  ),
-                ),
-                content: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: accountPage(),
-                ),
-              )
-            : Column(
-                children: [
-                  SizedBox(
-                    height: 2,
-                    child: refreshing
-                        ? const LinearProgressIndicator(
-                            minHeight: 2,
-                            color: ink,
-                            backgroundColor: acid,
-                          )
-                        : null,
-                  ),
-                  Expanded(
-                    key: const ValueKey('page-content'),
-                    child: RefreshIndicator(
-                      onRefresh: busy || (!home && page != PocketPage.checkout)
-                          ? () async {}
-                          : () => work(refreshAll),
-                      child: home
-                          ? ordered.isEmpty
-                                ? ListView(
-                                    children: [
-                                      emptyState(
-                                        'No coupons found.',
-                                        book.accounts.isEmpty
-                                            ? 'Connect an account in Settings.'
-                                            : 'Try another search or pull to refresh.',
-                                      ),
-                                    ],
-                                  )
-                                : CouponDeck(
-                                    count: ordered.length,
-                                    identity: (i) => ordered[i].key,
-                                    builder: (i) => offerTile(ordered[i]),
-                                  )
-                          : ListView(
-                              key: PageStorageKey(page),
-                              controller: home ? scroll : null,
-                              physics: const AlwaysScrollableScrollPhysics(),
-                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                              children: switch (page) {
-                                PocketPage.coupons => const [],
-                                PocketPage.checkout => checkout(),
-                                PocketPage.settings => settingsPage(),
-                                PocketPage.favourites => favouritePage(),
-                                PocketPage.accounts => accountsPage(),
-                                PocketPage.account => accountPage(),
-                                PocketPage.filters => filtersPage(),
-                              },
-                            ),
-                    ),
-                  ),
-                ],
-              ),
-        bottomNavigationBar: home
-            ? SafeArea(
-                top: false,
-                child: Container(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                  color: Theme.of(context).scaffoldBackgroundColor,
-                  child: FilledButton(
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(64),
-                      textStyle: const TextStyle(
-                        fontSize: 19,
-                        fontWeight: FontWeight.w700,
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -.6,
                       ),
                     ),
-                    onPressed: selected.isEmpty
-                        ? null
-                        : () {
-                            FocusScope.of(context).unfocus();
-                            setState(() => page = PocketPage.checkout);
-                            prepareCheckoutCard();
-                          },
-                    child: Row(
-                      children: [
-                        const Icon(Icons.shopping_bag_outlined),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            selected.isEmpty
-                                ? 'Continue'
-                                : 'Continue · ${selected.length}',
-                          ),
-                        ),
-                        const Icon(Icons.arrow_forward_rounded),
-                      ],
+              actions: [
+                if (batching)
+                  IconButton(
+                    tooltip: 'Stop activation',
+                    onPressed: () => cancelled = true,
+                    icon: const Icon(Icons.stop_circle_outlined),
+                  ),
+                if (busy && !refreshing && !batching)
+                  const Padding(
+                    padding: EdgeInsets.all(20),
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
                     ),
                   ),
+                if (home) ...[
+                  IconButton(
+                    tooltip: searching ? 'Close search' : 'Search',
+                    icon: Icon(
+                      searching ? Icons.close_rounded : Icons.search_rounded,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        searching = !searching;
+                        if (!searching) {
+                          search = '';
+                          searchInput.clear();
+                        }
+                      });
+                      if (!searching) FocusScope.of(context).unfocus();
+                    },
+                  ),
+                  IconButton(
+                    tooltip: 'Settings',
+                    icon: const Icon(Icons.settings_outlined),
+                    onPressed: () =>
+                        setState(() => this.page = PocketPage.settings),
+                  ),
+                ],
+              ],
+            ),
+      body: page == PocketPage.account && openedAccount != null
+          ? CoverScroll(
+              title: openedAccount!.label,
+              onBack: back,
+              titleAction: IconButton(
+                tooltip: 'Rename account',
+                icon: const Icon(Icons.edit_outlined),
+                onPressed: busy
+                    ? null
+                    : () => accountAction(openedAccount!, 'rename'),
+              ),
+              coverHeight: MediaQuery.sizeOf(context).width,
+              cover: ColoredBox(
+                color: accountColor(openedAccount!).withValues(alpha: .18),
+                child: Icon(
+                  Icons.person_outline_rounded,
+                  size: 88,
+                  color: accountColor(openedAccount!),
                 ),
-              )
-            : batching
-            ? SafeArea(
-                child: TextButton(
-                  onPressed: () => cancelled = true,
-                  child: const Text('Stop activation'),
+              ),
+              content: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: accountPage(),
+              ),
+            )
+          : Column(
+              children: [
+                SizedBox(
+                  height: 2,
+                  child: refreshing
+                      ? const LinearProgressIndicator(
+                          minHeight: 2,
+                          color: ink,
+                          backgroundColor: acid,
+                        )
+                      : null,
                 ),
-              )
-            : null,
-      ),
+                Expanded(
+                  key: const ValueKey('page-content'),
+                  child: RefreshIndicator(
+                    onRefresh: busy || (!home && page != PocketPage.checkout)
+                        ? () async {}
+                        : () => work(refreshAll),
+                    child: home
+                        ? ordered.isEmpty
+                              ? ListView(
+                                  children: [
+                                    emptyState(
+                                      'No coupons found.',
+                                      book.accounts.isEmpty
+                                          ? 'Connect an account in Settings.'
+                                          : 'Try another search or pull to refresh.',
+                                    ),
+                                  ],
+                                )
+                              : widget.layout == CouponLayout.wide
+                              ? ListView.builder(
+                                  key: const PageStorageKey('wide-coupons'),
+                                  controller: scroll,
+                                  physics:
+                                      const AlwaysScrollableScrollPhysics(),
+                                  padding: const EdgeInsets.fromLTRB(
+                                    12,
+                                    8,
+                                    12,
+                                    12,
+                                  ),
+                                  itemExtent: wideCardHeight(context) + 10,
+                                  itemCount: ordered.length,
+                                  itemBuilder: (_, i) => offerTile(ordered[i]),
+                                )
+                              : CouponDeck(
+                                  count: ordered.length,
+                                  identity: (i) => ordered[i].key,
+                                  builder: (i) => offerTile(ordered[i]),
+                                )
+                        : ListView(
+                            key: PageStorageKey(page),
+                            controller: home ? scroll : null,
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                            children: switch (page) {
+                              PocketPage.coupons => const [],
+                              PocketPage.checkout => checkout(),
+                              PocketPage.settings => settingsPage(),
+                              PocketPage.appearance => appearancePage(),
+                              PocketPage.favourites => favouritePage(),
+                              PocketPage.accounts => accountsPage(),
+                              PocketPage.account => accountPage(),
+                              PocketPage.filters => filtersPage(),
+                            },
+                          ),
+                  ),
+                ),
+              ],
+            ),
+      bottomNavigationBar: home
+          ? SafeArea(
+              top: false,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                color: Theme.of(context).scaffoldBackgroundColor,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(64),
+                    textStyle: const TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  onPressed: selected.isEmpty
+                      ? null
+                      : () {
+                          FocusScope.of(context).unfocus();
+                          setState(() => this.page = PocketPage.checkout);
+                          work(refreshAll).then((_) => prepareCheckoutCard());
+                        },
+                  child: Row(
+                    children: [
+                      const Icon(Icons.shopping_bag_outlined),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          selected.isEmpty
+                              ? 'Continue'
+                              : 'Continue · ${selected.length}',
+                        ),
+                      ),
+                      const Icon(Icons.arrow_forward_rounded),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          : batching
+          ? SafeArea(
+              child: TextButton(
+                onPressed: () => cancelled = true,
+                child: const Text('Stop activation'),
+              ),
+            )
+          : null,
     );
   }
 
@@ -1388,14 +1648,14 @@ class _PocketHomeState extends State<PocketHome> with WidgetsBindingObserver {
     const SizedBox(height: 24),
     OutlinedButton.icon(
       style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(56)),
-      onPressed: busy || (accountFilter == null && !hideOnline)
+      onPressed: busy || (accountFilter == null && hideOnline)
           ? null
           : () => work(() async {
               accountFilter = null;
-              hideOnline = false;
+              hideOnline = true;
               await widget.client.store.write(
                 'view',
-                jsonEncode({'hideOnline': false}),
+                jsonEncode({'hideOnline': true}),
               );
             }),
       icon: const Icon(Icons.restart_alt_rounded),
@@ -1461,14 +1721,37 @@ class _PocketHomeState extends State<PocketHome> with WidgetsBindingObserver {
       ? CouponPicture(
           key: ValueKey('${e.account.api.country}:${e.coupon.image}'),
           url: e.coupon.image,
+          trimEdge: e.coupon.online,
         )
       : const Icon(Icons.local_offer_outlined, size: 40, color: Colors.grey);
   Widget offerTile(CouponOffer offer) {
     final account = assigned[offer.key]?.account.id;
     final e = offer.copies.firstWhere(
       (copy) => copy.account.id == account,
-      orElse: () => offer.copies.first,
+      orElse: () => offer.preview,
     );
+    if (widget.layout == CouponLayout.wide) {
+      return WideCouponCard(
+        key: ValueKey(offer.key),
+        coupon: e.coupon,
+        image: e.account.api.pictures && e.coupon.image.isNotEmpty
+            ? OfferCover(
+                url: e.coupon.image,
+                trimEdge: e.coupon.online,
+                topInset: 0,
+                alignment: Alignment.centerRight,
+                rightInset: 18,
+              )
+            : const Center(child: Icon(Icons.local_offer_outlined, size: 40)),
+        selected: selected.contains(offer.key),
+        favourite: favourites.containsKey(favouriteName(e.coupon.title)),
+        onFavourite: busy ? null : () => toggleFavourite(e),
+        onDetails: busy ? null : () => showDetail(e),
+        onSelect: () {
+          if (!busy || batching) selectOffer(offer);
+        },
+      );
+    }
     return CouponCard(
       key: ValueKey(offer.key),
       coupon: e.coupon,
@@ -1805,7 +2088,9 @@ class _PocketHomeState extends State<PocketHome> with WidgetsBindingObserver {
         ),
       if (single) ...[
         inlineCard(grouped.keys.single),
-        heading('${grouped.values.single.length} selected offers'),
+        heading(
+          '${grouped.values.single.length} selected ${grouped.values.single.length == 1 ? 'offer' : 'offers'}',
+        ),
         Card(
           color: Theme.of(context).colorScheme.surface,
           elevation: 0,
@@ -1887,15 +2172,7 @@ class _PocketHomeState extends State<PocketHome> with WidgetsBindingObserver {
               foregroundColor: Colors.white,
               minimumSize: const Size.fromHeight(56),
             ),
-            onPressed: busy
-                ? null
-                : () => setState(() {
-                    selected.clear();
-                    pendingRemovals.clear();
-                    assigned.clear();
-                    selectionCache.clear();
-                    page = PocketPage.coupons;
-                  }),
+            onPressed: busy ? null : clearShoppingList,
             icon: const Icon(Icons.delete_outline_rounded),
             label: const Text('Clear shopping list'),
           ),
@@ -1988,18 +2265,11 @@ class _PocketHomeState extends State<PocketHome> with WidgetsBindingObserver {
   );
 
   List<Widget> settingsPage() => [
-    Card(
-      elevation: 0,
-      color: Theme.of(context).colorScheme.surface,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      child: SwitchListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-        secondary: const Icon(Icons.dark_mode_outlined),
-        title: const Text('Dark mode'),
-        value: widget.dark,
-        onChanged: widget.onDarkChanged,
-      ),
+    actionLink(
+      'Appearance',
+      Icons.palette_outlined,
+      () => setState(() => page = PocketPage.appearance),
+      subtitle: 'Coupon layout and theme',
     ),
     actionLink(
       'Coupon filters',
@@ -2017,6 +2287,53 @@ class _PocketHomeState extends State<PocketHome> with WidgetsBindingObserver {
       Icons.person_outline_rounded,
       () => setState(() => page = PocketPage.accounts),
       subtitle: 'Manage your connected accounts',
+    ),
+  ];
+
+  List<Widget> appearancePage() => [
+    heading('Coupon layout'),
+    Card(
+      elevation: 0,
+      color: Theme.of(context).colorScheme.surface,
+      margin: const EdgeInsets.only(bottom: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      child: RadioGroup<CouponLayout>(
+        groupValue: widget.layout,
+        onChanged: (value) {
+          if (value != null) widget.onLayoutChanged?.call(value);
+        },
+        child: const Column(
+          children: [
+            RadioListTile<CouponLayout>(
+              value: CouponLayout.stack,
+              title: Text('3D stack'),
+              subtitle: Text('Overlapping picture cards with depth'),
+              controlAffinity: ListTileControlAffinity.trailing,
+            ),
+            Divider(height: 1, indent: 16, endIndent: 16),
+            RadioListTile<CouponLayout>(
+              value: CouponLayout.wide,
+              title: Text('Wide cards'),
+              subtitle: Text('More offers visible, with ordinary scrolling'),
+              controlAffinity: ListTileControlAffinity.trailing,
+            ),
+          ],
+        ),
+      ),
+    ),
+    heading('Theme'),
+    Card(
+      elevation: 0,
+      color: Theme.of(context).colorScheme.surface,
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      child: SwitchListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+        secondary: const Icon(Icons.dark_mode_outlined),
+        title: const Text('Dark mode'),
+        value: widget.dark,
+        onChanged: widget.onDarkChanged,
+      ),
     ),
   ];
 
@@ -2124,7 +2441,8 @@ class _PocketHomeState extends State<PocketHome> with WidgetsBindingObserver {
 
 class CouponPicture extends StatefulWidget {
   final String url;
-  const CouponPicture({super.key, required this.url});
+  final bool trimEdge;
+  const CouponPicture({super.key, required this.url, this.trimEdge = false});
   @override
   State<CouponPicture> createState() => _CouponPictureState();
 }
@@ -2150,6 +2468,6 @@ class _CouponPictureState extends State<CouponPicture> {
               onPressed: () => setState(() => data = picture(widget.url)),
             ),
           )
-        : Image.memory(snapshot.data!, fit: BoxFit.contain, cacheWidth: 600),
+        : Artwork(bytes: snapshot.data!, trimEdge: widget.trimEdge),
   );
 }

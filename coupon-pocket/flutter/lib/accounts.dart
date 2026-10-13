@@ -330,7 +330,8 @@ List<OwnedCoupon> combined(
     for (final a in accounts)
       if (accountId == null || a.id == accountId)
         for (final c in a.coupons)
-          if ((!activatedOnly || c.activated) &&
+          if (!c.finished(a.api.clock()) &&
+              (!activatedOnly || c.activated) &&
               (!hideOnline || !c.online) &&
               seen.add(a.key(c)))
             OwnedCoupon(a, c),

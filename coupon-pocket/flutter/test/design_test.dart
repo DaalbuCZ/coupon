@@ -6,7 +6,6 @@ import 'package:coupon_pocket/accounts.dart';
 import 'package:coupon_pocket/client.dart';
 import 'package:coupon_pocket/main.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import 'package:coupon_pocket/coupon_card.dart';
 import 'package:coupon_pocket/wire.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -176,17 +175,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       Future<void> choose(String title) async {
-        final card = find.ancestor(
-          of: find.text(title),
-          matching: find.byType(CouponCard),
-        );
-        final button = find.descendant(
-          of: card,
-          matching: find.byTooltip('Select'),
-        );
-        await tester.ensureVisible(button);
+        await tester.tap(find.byTooltip('Search'));
         await tester.pumpAndSettle();
-        await tester.tap(button);
+        await tester.enterText(find.byType(TextField), title);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(title).first);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Close search'));
         await tester.pumpAndSettle();
       }
 
@@ -211,21 +206,15 @@ void main() {
       await snapshot('coupons');
       await tester.tap(find.textContaining('Continue'));
       await tester.pumpAndSettle();
-      expect(find.byType(QrImageView), findsNothing);
+      expect(find.byType(QrImageView), findsOneWidget);
       expect(find.text('Weekend'), findsOneWidget);
       expect(find.text('Home'), findsNothing);
       await snapshot('checkout');
-      await tester.tap(find.text('Show QR code'));
-      await tester.pumpAndSettle();
-      expect(find.byType(QrImageView), findsOneWidget);
       expect(
         tester.widget<QrImageView>(find.byType(QrImageView)).key,
-        ValueKey('qr-${b.id}'),
+        ValueKey('inline-qr-${b.id}'),
       );
       await snapshot('qr');
-      await tester.tap(find.text('Done'));
-      await tester.pumpAndSettle();
-      expect(find.byType(QrImageView), findsNothing);
       await tester.tap(find.byType(BackButton));
       await tester.pumpAndSettle();
       await choose('Ground coffee');
@@ -241,7 +230,7 @@ void main() {
         tester.widget<QrImageView>(find.byType(QrImageView)).key,
         ValueKey('qr-${a.id}'),
       );
-      await tester.tap(find.text('Done'));
+      await tester.tap(find.byType(CloseButton));
       await tester.pumpAndSettle();
       await tester.tap(find.byType(BackButton));
       await tester.pumpAndSettle();

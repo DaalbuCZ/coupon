@@ -68,6 +68,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Sleva · max 2 na nákup'), findsOneWidget);
     expect(find.text('Purchase limit'), findsNothing);
+    await tester.ensureVisible(find.text('Conditions'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Conditions'));
     await tester.pumpAndSettle();
     expect(find.text('Purchase limit'), findsOneWidget);

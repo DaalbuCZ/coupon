@@ -114,20 +114,61 @@ void main() {
     expect(aggregateCoupons(combined([a, b])).length, 1);
   });
   test('exact cover beats greedy and assigns each coupon only once', () {
-    final offers = aggregateCoupons(
-      combined([
-        account('A', ['1', '2', '3', '4']),
-        account('B', ['1', '2', '5']),
-        account('C', ['3', '4', '6']),
-        account('D', ['5']),
-        account('E', ['6']),
-      ]),
-    );
+    final accounts = [
+      account('A', ['1', '2', '3', '4']),
+      account('B', ['1', '2', '5']),
+      account('C', ['3', '4', '6']),
+      account('D', ['5']),
+      account('E', ['6']),
+    ];
+    for (final a in accounts) {
+      for (final c in a.coupons) {
+        c.raw['id'] = '${a.id}-${c.id}';
+      }
+    }
+    final offers = aggregateCoupons(combined(accounts));
     expect(offers.length, 6);
     final plan = checkoutPlan(offers, offers.map((e) => e.key).toSet());
     expect(plan.length, 6);
     expect(plan.values.map((e) => e.account.id).toSet(), {'B', 'C'});
   });
+  test(
+    'shared offers retain per-account dates and limits without duplicates',
+    () {
+      final a = account('A', ['one']), b = account('B', ['two']);
+      a.coupons.single.raw.addAll({
+        'title': 'Alesto',
+        'discount': {'title': '−20 %', 'description': 'Max 5 items'},
+        'validity': {'end': '2000-10-13T23:59:59+02:00'},
+      });
+      b.coupons.single.raw.addAll({
+        'title': ' ALESTO ',
+        'discount': {'title': '-20%', 'description': 'Max 2 items'},
+        'validity': {
+          'start': '2020-10-13T00:00:00+02:00',
+          'end': '2030-10-13T23:59:59+02:00',
+        },
+      });
+      expect(combined([a, b]).length, 1);
+      final offers = aggregateCoupons([
+        OwnedCoupon(a, a.coupons.single),
+        OwnedCoupon(b, b.coupons.single),
+      ]);
+      expect(offers.length, 1);
+      expect(offers.single.copies.length, 2);
+      final plan = checkoutPlan(offers, {offers.single.key});
+      expect(plan.length, 1);
+      expect(plan.values.map((e) => e.account.id).toSet().length, 1);
+      expect(plan.values.single.account.id, 'B');
+      expect(plan.values.single.coupon.id, 'two');
+      expect(plan.values.single.coupon.benefitDescription, 'Max 2 items');
+      expect(offers.single.preview.account.id, 'B');
+      expect(
+        offers.single.copies.first.coupon.benefitDescription,
+        'Max 5 items',
+      );
+    },
+  );
   test(
     'ties prefer active copies, stale accounts cannot receive activations',
     () {

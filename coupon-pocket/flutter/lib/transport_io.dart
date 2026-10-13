@@ -23,7 +23,7 @@ Future<Reply> send(
     request.followRedirects = false;
     request.headers.set('Accept', 'application/json');
     headers.forEach(request.headers.set);
-    request.headers.set('User-Agent', 'CouponPocket/0.12.3 (Android)');
+    request.headers.set('User-Agent', 'LidlPlusPlus/0.14.2 (Android)');
     if (body != null) {
       request.headers.set('Content-Type', contentType!);
       final bytes = utf8.encode(body);

@@ -4,27 +4,36 @@ import 'accounts.dart';
 import 'coupon_view.dart';
 import 'models.dart';
 
+String offerEnd(Coupon coupon) => string(
+  object(coupon.raw['validity'])['end'],
+  string(
+    object(coupon.raw['validity'])['endDate'],
+    string(coupon.raw['endValidityDate']),
+  ),
+);
+
+// Account-specific promotion IDs identify mutations, not shared offers.
+// Dates, limits and descriptions belong to each account's copy. The shopper
+// selects the displayed offer once; fresh detail validation uses the real copy.
 String offerKey(OwnedCoupon e) => jsonEncode([
   e.account.api.country,
-  e.coupon.id,
   favouriteName(e.coupon.title),
-  e.coupon.benefit,
-  string(object(e.coupon.raw['validity'])['start']),
-  string(
-    object(e.coupon.raw['validity'])['end'],
-    string(
-      object(e.coupon.raw['validity'])['endDate'],
-      string(e.coupon.raw['endValidityDate']),
-    ),
-  ),
+  e.coupon.benefit
+      .toLowerCase()
+      .replaceAll(RegExp(r'\s+'), '')
+      .replaceAll('−', '-')
+      .replaceAll(',', '.'),
   e.coupon.online,
 ]);
 
-// A particular campaign survives title/benefit formatting changes.
-String occurrenceKey(OwnedCoupon e) {
-  final key = jsonDecode(offerKey(e)) as List;
-  return jsonEncode([key[0], key[1], key[4], key[5], key[6]]);
-}
+// A particular account campaign survives title/benefit formatting changes.
+String occurrenceKey(OwnedCoupon e) => jsonEncode([
+  e.account.api.country,
+  e.coupon.id,
+  string(object(e.coupon.raw['validity'])['start']),
+  offerEnd(e.coupon),
+  e.coupon.online,
+]);
 
 class CouponOffer {
   final String key;
@@ -32,7 +41,7 @@ class CouponOffer {
   CouponOffer(this.key, this.copies);
   OwnedCoupon get preview => copies.firstWhere(
     (e) => e.coupon.activated && usableCopy(e),
-    orElse: () => copies.first,
+    orElse: () => copies.firstWhere(usableCopy, orElse: () => copies.first),
   );
 }
 
@@ -43,6 +52,8 @@ List<CouponOffer> aggregateCoupons(List<OwnedCoupon> entries) {
   }
   return [for (final e in groups.entries) CouponOffer(e.key, e.value)];
 }
+
+bool couponFinished(Coupon coupon, DateTime now) => coupon.finished(now);
 
 bool usableCopy(OwnedCoupon e) {
   if (!e.account.fresh || e.coupon.processing) return false;

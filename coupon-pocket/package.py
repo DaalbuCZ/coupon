@@ -12,7 +12,7 @@ names = subprocess.check_output(
     ['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', 'coupon-pocket/'],
     cwd=root,
 ).decode('utf-8').split('\0')
-excluded = {'.local', 'build', 'dist', '.gradle', '.dart_tool', '.idea', '.vscode', '.pub-cache', '.pub', 'Pods', '.symlinks', 'ephemeral'}
+excluded = {'.local', 'build', 'dist', '.gradle', '.kotlin', '.dart_tool', '.idea', '.vscode', '.pub-cache', '.pub', 'Pods', '.symlinks', 'ephemeral'}
 private_names = {'local.properties', 'key.properties', 'Generated.xcconfig', 'flutter_export_environment.sh', '.flutter-plugins-dependencies'}
 source = dist / 'coupon-pocket-source.zip'
 with zipfile.ZipFile(source, 'w', zipfile.ZIP_DEFLATED) as archive:
@@ -38,6 +38,7 @@ if apk.is_file():
 flutter_apk = dist / 'coupon-pocket-flutter-dev.apk'
 if flutter_apk.is_file():
     artifacts.append(flutter_apk)
+artifacts.extend(sorted(dist.glob('lidl-plus-plus-*-release.apk')))
 (dist / 'SHA256SUMS').write_text(''.join(
     f'{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n' for path in sorted(artifacts)
 ), encoding='ascii')

@@ -253,7 +253,7 @@ class _CouponInformationState extends State<CouponInformation> {
         if (widget.choices != null) widget.choices!,
         if (products.isNotEmpty) ...[
           Text(
-            'Products · ${products.length}',
+            '${products.length == 1 ? 'Product' : 'Products'} · ${products.length}',
             style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w700),
           ),
           if (products.length > 12)

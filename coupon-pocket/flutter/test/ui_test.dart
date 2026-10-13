@@ -45,25 +45,27 @@ void main() {
     );
     final client = Client(
       store,
-      send: (_, _, _, _, _) async => Reply(
-        200,
-        jsonEncode({
-          'sections': [
-            {
-              'promotions': [
-                for (var i = 0; i < 4; i++)
+      send: (_, url, _, _, _) async => url.host == 'profile.lidlplus.com'
+          ? Reply(200, '"00123"')
+          : Reply(
+              200,
+              jsonEncode({
+                'sections': [
                   {
-                    'id': '$i',
-                    'title': 'Long product coupon title $i',
-                    'isActivated': i == 0,
-                    'discount': {'title': '20%'},
-                    'validity': {'end': '2030-10-13T00:00:00Z'},
+                    'promotions': [
+                      for (var i = 0; i < 4; i++)
+                        {
+                          'id': '$i',
+                          'title': 'Long product coupon title $i',
+                          'isActivated': i == 0,
+                          'discount': {'title': '20%'},
+                          'validity': {'end': '2030-10-13T00:00:00Z'},
+                        },
+                    ],
                   },
-              ],
-            },
-          ],
-        }),
-      ),
+                ],
+              }),
+            ),
     );
     await tester.pumpWidget(PocketApp(client: client, worker: SerialQueue()));
     await tester.pumpAndSettle();
@@ -76,6 +78,11 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.tap(find.byTooltip('Settings'));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Accounts'),
+      100,
+      scrollable: find.byType(Scrollable).last,
+    );
     await tester.tap(find.text('Accounts'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
@@ -86,6 +93,8 @@ void main() {
     await tester.ensureVisible(find.text('Account 1'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Account 1'));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -600));
     await tester.pumpAndSettle();
     expect(find.text('Preferences'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -138,7 +147,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Favourite coupon').last);
       await tester.pumpAndSettle();
-      expect(find.text('Favourites'), findsOneWidget);
+      expect(find.byTooltip('Remove favourite'), findsOneWidget);
       expect(
         tester.getTopLeft(find.text('Coffee')).dy,
         lessThan(tester.getTopLeft(find.text('Fruit')).dy),
@@ -178,6 +187,11 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Settings'));
       await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Accounts'),
+        100,
+        scrollable: find.byType(Scrollable).last,
+      );
       await tester.tap(find.text('Accounts'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Add account'));
@@ -246,11 +260,13 @@ void main() {
       );
       await tester.pumpWidget(PocketApp(client: client, worker: SerialQueue()));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Select').first);
+      await tester.tap(find.text('A'));
       await tester.pumpAndSettle();
       expect(posts, ['A']);
-      final next = find.byTooltip('Select').last;
-      await tester.ensureVisible(next);
+      await tester.tap(find.byTooltip('Search'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'B');
+      final next = find.text('B', findRichText: false).first;
       await tester.pumpAndSettle();
       await tester.tap(next);
       await tester.pumpAndSettle();
@@ -316,7 +332,7 @@ void main() {
     );
     await tester.pumpWidget(PocketApp(client: client, worker: SerialQueue()));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Select'));
+    await tester.tap(find.text('Coffee'));
     await tester.pumpAndSettle();
     expect(posts, 0);
     expect(
@@ -327,6 +343,13 @@ void main() {
           .onPressed,
       isNull,
     );
+    await tester.scrollUntilVisible(
+      find.byType(DropdownButton<String>),
+      180,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -250));
+    await tester.pumpAndSettle();
     await tester.tap(find.byType(DropdownButton<String>));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Large pack').last);
@@ -370,8 +393,8 @@ void main() {
     );
     await tester.pumpWidget(PocketApp(client: api, worker: SerialQueue()));
     await tester.pumpAndSettle();
-    expect(find.text('Saved coupons'), findsOneWidget);
-    await tester.tap(find.byTooltip('Select'));
+    expect(find.text('Saved coupon'), findsOneWidget);
+    await tester.tap(find.text('Saved coupon'));
     await tester.pumpAndSettle();
     expect(calls, isEmpty);
   });

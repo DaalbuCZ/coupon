@@ -54,7 +54,7 @@ class MainActivity : FlutterActivity() {
                         connection.readTimeout = 20000
                         connection.useCaches = false
                         connection.setRequestProperty("Accept", "application/json")
-                        connection.setRequestProperty("User-Agent", "CouponPocket/0.12.3 (Android)")
+                        connection.setRequestProperty("User-Agent", "LidlPlusPlus/0.14.2 (Android)")
                         connection.setRequestProperty("Authorization", authorization)
                         connection.setRequestProperty("Country", country)
                         connection.setRequestProperty("Accept-Language", language)

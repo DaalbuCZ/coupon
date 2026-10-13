@@ -1,6 +1,34 @@
-# Coupon Pocket Flutter port
+# Lidl++ Flutter app
 
-The Dart application in this directory targets Android (API 28+, target 35), iOS (15+) and web. The existing Java Android app remains in `../app`; its packaged APK remains version 0.3.0. The Flutter app is version 0.12.3 and uses a separate Android application ID (`local.couponpocket.coupon_pocket`), so it can be evaluated alongside the original without replacing its data or signing identity. The original development key is untouched. No captured account data is included.
+The Dart application in this directory targets Android (API 28+, target 35), iOS (15+) and web. The existing Java Android app remains in `../app`; its packaged APK remains version 0.3.0. The Flutter app is version 0.14.2 and uses a separate Android application ID (`local.couponpocket.coupon_pocket`), so it can be evaluated alongside the original without replacing its data or signing identity. The original development key is untouched. No captured account data is included.
+
+## 0.14.0: server state and navigation
+
+Server-active coupons restore after restart or the first successful reconnect. Checkout refreshes while foreground and idle and removes redeemed, expired or vanished selected occurrences. Online offers default hidden; account covers are square; count labels, artwork edges and expansion panels are refined. Material routes enable predictive back and subtle selection transitions. Full offline suite: 61 checks passed; Android release and web build verified. Phone gesture feel and live redemption latency remain to be checked.
+
+## 0.13.5: separate artwork-edge colors
+
+Wide cards sample both vertical image edges independently through the existing bounded thumbnail decode. The left extension and the narrow right inset use their respective median colors. Detail covers retain top-edge sampling. This visual adjustment is verified by release compilation without additional tests.
+
+## 0.13.4: remaining duplicate offers
+
+Shared offers match country, normalized name/discount and channel. Validity dates, discount descriptions and limits stay on their account copies, rather than splitting visually identical offers. Preview prefers a usable copy, and QR planning excludes unusable copies before minimizing accounts. Fresh account-specific detail validation remains mandatory before any mutation. One focused regression checks different IDs, dates and limits, an expired copy, and retaining the selected copy’s original ID and conditions.
+
+## 0.13.3: shared offers and fewer QR codes
+
+The main header returns to a plain Lidl++ title. Offers now group across accounts even when promotion IDs differ, using country, normalized name/benefit/discount description, calendar validity dates and channel. Account IDs remain intact for mutations. Browse and checkout show a shared offer once; exact set-cover planning minimizes the number of accounts needed for all selected offers, then prefers already active copies. Different benefits, described limits, dates and countries remain separate. Focused offline checks cover duplicate IDs/formatting, commercial differences and a combination where greedy account selection would require more QR codes.
+
+## 0.13.2: header logo
+
+The main header places the circular L++ logo beside the Lidl++ title. The bundled thumbnail uses a bounded decode size, follows the existing header alignment and gives way to the search field when search opens. Verified by release compilation without additional tests.
+
+## 0.13.1: Lidl++ and wide-card refinements
+
+The displayed app name is Lidl++, while existing package IDs and the local signing identity remain compatible with installed data. The generated L++ launcher mark uses separate adaptive foreground/background layers on Android. Wide-card controls are vertically centered with 70% opaque white backgrounds. Square artwork is inset from the right, and the horizontal background extension samples the left image edge to avoid a contrasting seam. This reversible visual update is checked by release compilation; phone rendering remains for user assessment.
+
+## 0.13.0: optional wide cards
+
+Settings → Appearance now contains the coupon layout choice and Dark mode. Existing installations keep the frozen 3D stack by default. Wide cards use ordinary lazy scrolling, compact landscape artwork with a sampled image background, and the same tap selection, favourite and details controls. Switching layouts preserves selections and search; layout and theme are saved together. One focused fake-server widget flow checks switching, persistence, selection and checkout. Phone smoothness remains for user testing.
 
 ## 0.8.1: square image cards
 
@@ -188,3 +216,21 @@ The offer image sits below the system inset plus 32 logical pixels, while a medi
 ### 0.12.3
 
 Every exposed carousel card accepts its own selection, favourite and info taps immediately. Removed the off-centre pointer interception and tap-to-focus wrapper; transformed hit testing and fixed front-to-back paint order select the visible card under the finger. Native drag gesture arbitration remains. Nearby cards retain their bounded reuse and repaint boundaries. Verified by release compilation without additional tests; overlapping-card touch feel remains for phone assessment.
+
+### 0.14.0
+
+Activation remains server-side: the supplied 17.11.6 APK's `Lajn` coupon interface still defines POST/DELETE `v2/promotions/{id}/activation`, GET `v4/promotionslist` and GET `v4/promotionsdetails/{id}`. Static inspection verifies those definitions, not live checkout behavior. The Flutter defect was the empty local shopping selection after restart, despite reading active server coupons. Startup now restores fresh active usable copies without sending mutations. Returning to the foreground and entering checkout refresh account lists; checkout also reads every 30 seconds while foreground and idle, with no background polling; redeemed, expired, missing or replaced selected occurrences are removed after successful reads. Failed reads retain existing selections and uncertain requests remain unreplayed. Clearing the shopping list still changes only the current local selection.
+
+Online offers default to hidden, preserving explicit saved choices; reset filters restores that default. Online artwork trims one bounded decoded edge pixel to remove thin supplied frames. Account covers are square. Counts use singular offer/product labels when appropriate. Screens now use Material routes with Android predictive back enabled and Flutter's predictive page transitions; selection outlines animate for 160 ms, respecting reduced motion. Expanded information panels have no divider borders.
+
+Offline server-state checks cover restoration across recreation, redemption and disappearance on resume, failed-refresh retention, online defaults and absence of mutation replay. Existing navigation checks also exercise system back. APK compilation and offline tests cannot verify the phone's predictive gesture, live server redemption latency or checkout acceptance.
+
+### 0.14.1
+
+Clear shopping list now deactivates each selected offer's active real account copies, reading fresh details and using the serial queue. It stops on failure/cancellation and never retries uncertain DELETEs automatically. Remaining server-active copies stay selected after reconciliation. Every successful refresh now imports externally activated coupons and removes externally deactivated selections; unfinished product choices and uncertain local attempts remain separate. Reload, foreground return and checkout reads are all read-only reconciliation.
+
+Android back now uses a horizontal 190 ms forward / 170 ms reverse transition. Predictive gesture progress moves the route sideways without scaling; cancellation returns it and commit finishes from the current drag position. Reduced motion remains respected. Offline checks exercise shared-account clearing, stop-on-uncertain-delete, cross-app activation/deactivation on reload and gesture geometry/cancel/commit.
+
+### 0.14.2
+
+Clearing shows a fullscreen, theme-aware progress screen with a shopping-bag icon, indeterminate spinner and a short explanation. It covers refresh, deactivation and final reconciliation and closes on success, cancellation or failure. Taps and back cannot dismiss it mid-operation; existing lifecycle cancellation and no-replay behavior are preserved. The delayed fake-server check verifies the screen remains during a request and is removed afterward, including failure cleanup.
